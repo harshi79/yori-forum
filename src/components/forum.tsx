@@ -20,7 +20,7 @@ export async function Header({ actor }: { actor?: Actor | null }) {
         <Link href="/community" className="text-xl font-bold">
           ✳ yori<span className="text-violet-400">.</span>
         </Link>
-        <div className="flex items-center gap-4 text-sm text-slate-300">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2 text-sm text-slate-300">
           <Link href="/community" className="hover:text-white">
             Explore
           </Link>

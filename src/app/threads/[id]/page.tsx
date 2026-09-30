@@ -86,7 +86,7 @@ export default async function ThreadPage({
             {thread.isLocked ? "🔒 Locked · " : ""}
             {thread.category.name}
           </p>
-          <h1 className="mt-3 text-4xl font-semibold tracking-tight">
+          <h1 className="mt-3 break-words text-4xl font-semibold tracking-tight">
             {thread.title}
           </h1>
           <p className="mt-4 text-sm text-slate-400">
@@ -165,7 +165,7 @@ export default async function ThreadPage({
               .map(({ post, author, likes, hearts, insights }) => (
                 <article key={post.id} id={`post-${post.id}`} className={panel}>
                   <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex items-center gap-3">
+                    <div className="flex min-w-0 items-center gap-3">
                       <Avatar
                         id={author?.id ?? "missing"}
                         name={
@@ -175,7 +175,7 @@ export default async function ThreadPage({
                         }
                         stored={author?.avatarUrl}
                       />
-                      <div>
+                      <div className="min-w-0 break-words">
                         <p className="font-medium">
                           {author ? (
                             <Link

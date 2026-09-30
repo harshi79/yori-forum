@@ -229,6 +229,10 @@ const server = createServer(async (req, res) => {
         failDatabase = false;
         return send(200, { ok: true });
       }
+      if (body.action === "reset-login-limits") {
+        await db.execute("delete from rate_limits where key like 'login:%'");
+        return send(200, { ok: true });
+      }
       if (body.action === "count") {
         const data = await db.execute({ sql: body.sql, args: body.args ?? [] });
         return send(200, { rows: data.rows });

@@ -47,11 +47,12 @@ export default async function SearchPage({
         <form
           action="/search"
           method="get"
-          className="mb-10 flex max-w-xl gap-3"
+          className="mb-10 flex max-w-xl flex-wrap gap-3 sm:flex-nowrap"
         >
           <input
-            className={input}
+            className={`${input} min-w-0`}
             name="q"
+            aria-label="Search conversations"
             defaultValue={q ?? ""}
             minLength={2}
             maxLength={80}
@@ -81,7 +82,7 @@ export default async function SearchPage({
                     href={`/threads/${thread.id}`}
                   >
                     <p className="text-xs text-violet-300">{category.name}</p>
-                    <h2 className="mt-2 text-lg font-semibold">
+                    <h2 className="mt-2 break-words text-lg font-semibold">
                       {thread.title}
                     </h2>
                     <p className="mt-2 text-xs text-slate-500">

@@ -50,6 +50,7 @@ export function ThreadForm({ categoryId }: { categoryId: string }) {
       <input
         className={input}
         name="title"
+        aria-label="Discussion title"
         placeholder="What’s on your mind?"
         required
         minLength={5}
@@ -58,6 +59,7 @@ export function ThreadForm({ categoryId }: { categoryId: string }) {
       <textarea
         className={input}
         name="body"
+        aria-label="Opening post"
         placeholder="Give your conversation a thoughtful start…"
         rows={5}
         required
@@ -88,6 +90,7 @@ export function ReplyForm({
       <textarea
         className={input}
         name="body"
+        aria-label="Reply text"
         placeholder="Add to the conversation…"
         rows={4}
         required
@@ -115,6 +118,7 @@ export function EditPostForm({
         <textarea
           className={input}
           name="body"
+          aria-label="Edited post text"
           defaultValue={body}
           rows={4}
           required
@@ -165,7 +169,8 @@ export function ProfileForm({
         />
       </label>
       <p className="text-xs text-slate-400">
-        Avatar images are not uploaded yet; an initial-based avatar is shown.
+        Upload a PNG, JPEG or WebP avatar below, or keep your initial-based
+        avatar.
       </p>
     </Form>
   );
@@ -191,6 +196,7 @@ export function CategoryForm({
       <input
         className={input}
         name="name"
+        aria-label="Category name"
         placeholder="Name"
         defaultValue={category?.name}
         required
@@ -199,6 +205,7 @@ export function CategoryForm({
       <input
         className={input}
         name="slug"
+        aria-label="Category URL slug"
         placeholder="url-slug"
         defaultValue={category?.slug}
         required
@@ -207,6 +214,7 @@ export function CategoryForm({
       <textarea
         className={input}
         name="description"
+        aria-label="Category description"
         placeholder="What belongs here?"
         defaultValue={category?.description ?? ""}
         maxLength={500}
@@ -240,10 +248,11 @@ export function RoleForm() {
       <input
         className={input}
         name="userId"
+        aria-label="Forum user ID"
         placeholder="Forum user ID"
         required
       />
-      <select name="role" className={input}>
+      <select name="role" aria-label="New role" className={input}>
         <option value="user">User</option>
         <option value="moderator">Moderator</option>
         <option value="admin">Admin</option>
@@ -269,6 +278,7 @@ export function ReportForm({
         <textarea
           className={input}
           name="reason"
+          aria-label="Report reason"
           placeholder="Tell moderators what happened (10–1000 characters)"
           minLength={10}
           maxLength={1000}

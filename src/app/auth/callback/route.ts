@@ -8,15 +8,16 @@ import { limit, fingerprint, RateLimitError } from "@/lib/forum/rate";
 export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get("code");
   // Never accept an arbitrary redirect destination from the callback URL.
-  const destination = new URL("/community", request.url);
+  const origin = process.env.APP_ORIGIN;
+  if (!origin || !/^https?:\/\/[^/]+$/.test(origin))
+    return new NextResponse("Authentication is unavailable", { status: 503 });
+  const destination = new URL("/community", origin);
   if (!code)
-    return NextResponse.redirect(
-      new URL("/login?error=missing-code", request.url),
-    );
+    return NextResponse.redirect(new URL("/login?error=missing-code", origin));
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !key)
-    return NextResponse.redirect(new URL("/login?error=config", request.url));
+    return NextResponse.redirect(new URL("/login?error=config", origin));
   try {
     await limit(
       getDb(),
@@ -46,6 +47,6 @@ export async function GET(request: NextRequest) {
   });
   const { error } = await supabase.auth.exchangeCodeForSession(code);
   if (error)
-    return NextResponse.redirect(new URL("/login?error=callback", request.url));
+    return NextResponse.redirect(new URL("/login?error=callback", origin));
   return response;
 }

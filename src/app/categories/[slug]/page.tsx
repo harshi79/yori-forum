@@ -61,7 +61,9 @@ export default async function CategoryPage({
           ← All spaces
         </Link>
         <div className="my-10">
-          <h1 className="text-4xl font-semibold">{category.name}</h1>
+          <h1 className="break-words text-4xl font-semibold">
+            {category.name}
+          </h1>
           <p className="mt-3 text-slate-400">{category.description}</p>
           <p className="mt-3 text-xs text-slate-500">
             Created <DateLabel date={category.createdAt} />
@@ -76,7 +78,7 @@ export default async function CategoryPage({
                 className={`${panel} block transition hover:border-violet-400/40`}
               >
                 <div className="flex flex-wrap items-start justify-between gap-2">
-                  <h2 className="text-lg font-semibold">
+                  <h2 className="break-words text-lg font-semibold">
                     {thread.isPinned && (
                       <span className="mr-2 text-violet-300">✳ Pinned</span>
                     )}

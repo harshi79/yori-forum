@@ -4,14 +4,22 @@ import { getDb } from "@/db/client";
 import { categories } from "@/db/schema";
 import { currentActor } from "@/lib/forum/context";
 import { canAdmin } from "@/lib/forum/permissions";
-import { Header, Shell } from "@/components/forum";
+import { Header, Shell, Pagination } from "@/components/forum";
+import { pageNumber } from "@/lib/forum/validation";
 import { CategoryForm, RoleForm } from "@/components/forms";
 export const dynamic = "force-dynamic";
-export default async function Admin() {
+export default async function Admin({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string }>;
+}) {
+  const page = pageNumber((await searchParams).page);
   const actor = await currentActor();
   if (!canAdmin(actor)) notFound();
   const list = await getDb().query.categories.findMany({
     orderBy: asc(categories.sortOrder),
+    limit: 21,
+    offset: (page - 1) * 20,
   });
   return (
     <>
@@ -20,10 +28,11 @@ export default async function Admin() {
         <h1 className="mb-8 text-4xl font-semibold">Shape the spaces</h1>
         <div className="grid gap-6 lg:grid-cols-2">
           <CategoryForm />
-          {list.map((c) => (
+          {list.slice(0, 20).map((c) => (
             <CategoryForm key={c.id} category={c} />
           ))}
         </div>
+        <Pagination page={page} hasMore={list.length > 20} base="/admin" />
         <div className="mt-12 max-w-xl">
           <h2 className="mb-4 text-xl">Roles</h2>
           <p className="mb-4 text-sm text-slate-400">

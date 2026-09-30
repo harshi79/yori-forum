@@ -3,9 +3,15 @@ import { asc, eq, isNull, and, sql } from "drizzle-orm";
 import { getDb } from "@/db/client";
 import { categories, threads } from "@/db/schema";
 import { optionalActor } from "@/lib/forum/context";
-import { Empty, Header, Shell, panel } from "@/components/forum";
+import { Empty, Header, Shell, Pagination, panel } from "@/components/forum";
+import { pageNumber } from "@/lib/forum/validation";
 export const dynamic = "force-dynamic";
-export default async function Community() {
+export default async function Community({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string }>;
+}) {
+  const page = pageNumber((await searchParams).page);
   const actor = await optionalActor();
   const db = getDb();
   const list = await db
@@ -27,7 +33,9 @@ export default async function Community() {
     )
     .where(isNull(categories.archivedAt))
     .groupBy(categories.id)
-    .orderBy(asc(categories.sortOrder), asc(categories.name));
+    .orderBy(asc(categories.sortOrder), asc(categories.name))
+    .limit(21)
+    .offset((page - 1) * 20);
   return (
     <>
       <Header actor={actor} />
@@ -46,7 +54,7 @@ export default async function Community() {
         <h2 className="mb-5 text-xl font-semibold">Spaces</h2>
         {list.length ? (
           <div className="grid gap-4 md:grid-cols-2">
-            {list.map((c) => (
+            {list.slice(0, 20).map((c) => (
               <Link
                 key={c.id}
                 href={`/categories/${c.slug}`}
@@ -66,6 +74,7 @@ export default async function Community() {
         ) : (
           <Empty>No spaces yet. Check back soon.</Empty>
         )}
+        <Pagination page={page} hasMore={list.length > 20} base="/community" />
       </Shell>
     </>
   );

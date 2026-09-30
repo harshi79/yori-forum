@@ -308,3 +308,47 @@ test("health degrades safely when Turso is unavailable", async ({
     await request.post(base, { data: { action: "database-online" } });
   }
 });
+
+test("mobile navigation and forms fit a narrow viewport", async ({
+  browser,
+}) => {
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    isMobile: true,
+    hasTouch: true,
+  });
+  try {
+    const page = await context.newPage();
+    for (const path of [
+      "/community",
+      "/categories/general",
+      "/threads/thread-seeded",
+      "/search",
+      "/login",
+    ]) {
+      await page.goto(path);
+      await expect(
+        page.getByRole("link", {
+          name: path === "/login" ? /Back to Yori/ : /Explore/,
+        }),
+      ).toBeVisible();
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth),
+      ).toBeLessThanOrEqual(391);
+    }
+    // Restore the isolated mock's login bucket for this separate viewport check.
+    await page.request.post("http://127.0.0.1:54387/__fixture", {
+      data: { action: "reset-login-limits" },
+    });
+    await signIn(page, "alice");
+    await page.goto("/profile");
+    await expect(
+      page.getByRole("heading", { name: "Your profile" }),
+    ).toBeVisible();
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth),
+    ).toBeLessThanOrEqual(391);
+  } finally {
+    await context.close();
+  }
+});

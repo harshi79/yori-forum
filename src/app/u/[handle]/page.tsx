@@ -21,8 +21,8 @@ export default async function PublicProfile({
   const [[stats], actor] = await Promise.all([
     db
       .select({
-        threads: sql<number>`(select count(*) from threads where author_id = ${profile.id} and deleted_at is null and archived_at is null)`,
-        posts: sql<number>`(select count(*) from posts where author_id = ${profile.id} and deleted_at is null)`,
+        threads: sql<number>`(select count(*) from threads t join categories c on c.id = t.category_id where t.author_id = ${profile.id} and t.deleted_at is null and t.archived_at is null and c.archived_at is null)`,
+        posts: sql<number>`(select count(*) from posts p join threads t on t.id = p.thread_id join categories c on c.id = t.category_id where p.author_id = ${profile.id} and p.deleted_at is null and t.deleted_at is null and t.archived_at is null and c.archived_at is null)`,
       })
       .from(users)
       .where(eq(users.id, profile.id)),
@@ -39,7 +39,7 @@ export default async function PublicProfile({
             stored={profile.avatarUrl}
             size={80}
           />
-          <h1 className="mt-6 text-4xl font-semibold">
+          <h1 className="mt-6 break-words text-4xl font-semibold">
             {profile.displayName ?? profile.handle}
           </h1>
           <p className="mt-2 text-violet-300">
