@@ -1,6 +1,7 @@
 import { relations, sql } from "drizzle-orm";
 import {
   index,
+  check,
   integer,
   primaryKey,
   sqliteTable,
@@ -89,6 +90,7 @@ export const categories = sqliteTable("categories", {
   sortOrder: integer("sort_order").notNull().default(0),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
+  archivedAt: timestamp("archived_at"),
 });
 
 export const threads = sqliteTable(
@@ -106,6 +108,11 @@ export const threads = sqliteTable(
     isPinned: integer("is_pinned", { mode: "boolean" })
       .notNull()
       .default(false),
+    viewCount: integer("view_count").notNull().default(0),
+    lastActivityAt: timestamp("last_activity_at")
+      .notNull()
+      .default(sql`(unixepoch())`),
+    archivedAt: timestamp("archived_at"),
     isLocked: integer("is_locked", { mode: "boolean" })
       .notNull()
       .default(false),
@@ -117,6 +124,7 @@ export const threads = sqliteTable(
     uniqueIndex("threads_category_slug_unique").on(t.categoryId, t.slug),
     index("threads_category_created_idx").on(t.categoryId, t.createdAt),
     index("threads_author_idx").on(t.authorId),
+    index("threads_activity_idx").on(t.categoryId, t.lastActivityAt),
   ],
 );
 
@@ -134,6 +142,7 @@ export const posts = sqliteTable(
     createdAt: createdAt(),
     updatedAt: updatedAt(),
     deletedAt: timestamp("deleted_at"),
+    editedAt: timestamp("edited_at"),
   },
   (t) => [
     index("posts_thread_created_idx").on(t.threadId, t.createdAt),
@@ -156,6 +165,10 @@ export const reactions = sqliteTable(
   (t) => [
     primaryKey({ columns: [t.userId, t.postId, t.kind] }),
     index("reactions_post_idx").on(t.postId),
+    check(
+      "reactions_kind_check",
+      sql`${t.kind} in ('like', 'heart', 'insightful')`,
+    ),
   ],
 );
 
@@ -247,3 +260,54 @@ export const postRelations = relations(posts, ({ one }) => ({
 export const categoryRelations = relations(categories, ({ many }) => ({
   threads: many(threads),
 }));
+
+export const postEdits = sqliteTable(
+  "post_edits",
+  {
+    id: text("id").primaryKey(),
+    postId: text("post_id")
+      .notNull()
+      .references(() => posts.id, { onDelete: "cascade" }),
+    editorId: text("editor_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    previousBody: text("previous_body").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index("post_edits_post_idx").on(t.postId)],
+);
+
+export const reports = sqliteTable(
+  "reports",
+  {
+    id: text("id").primaryKey(),
+    reporterId: text("reporter_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    threadId: text("thread_id").references(() => threads.id, {
+      onDelete: "set null",
+    }),
+    postId: text("post_id").references(() => posts.id, {
+      onDelete: "set null",
+    }),
+    reason: text("reason").notNull(),
+    status: text("status").notNull().default("open"),
+    resolvedBy: text("resolved_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    resolvedAt: timestamp("resolved_at"),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index("reports_status_created_idx").on(t.status, t.createdAt),
+    index("reports_reporter_idx").on(t.reporterId),
+    check(
+      "reports_target_check",
+      sql`(${t.threadId} is not null and ${t.postId} is null) or (${t.threadId} is null and ${t.postId} is not null)`,
+    ),
+    check(
+      "reports_status_check",
+      sql`${t.status} in ('open', 'resolved', 'dismissed')`,
+    ),
+  ],
+);

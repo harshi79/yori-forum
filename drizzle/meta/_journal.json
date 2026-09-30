@@ -8,6 +8,13 @@
       "when": 1790772899443,
       "tag": "0000_ambiguous_master_chief",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1790773396242,
+      "tag": "0001_known_christian_walker",
+      "breakpoints": true
     }
   ]
 }
