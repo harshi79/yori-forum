@@ -2,6 +2,21 @@ import { beforeEach, afterEach, describe, expect, it } from "vitest";
 import { createClient, type Client } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
 import { eq } from "drizzle-orm";
+import {
+  mentions,
+  toggleBookmark,
+  markRead,
+  unreadCount,
+  search,
+} from "../src/lib/forum/extra";
+import {
+  limit,
+  deduplicate,
+  RateLimitError,
+  fingerprint,
+} from "../src/lib/forum/rate";
+import { avatarType, avatarKey, readAvatar } from "../src/lib/forum/avatar";
+import { boundedForm } from "../src/lib/forum/requests";
 import { readFileSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -43,7 +58,13 @@ beforeEach(async () => {
   const migration =
     readFileSync("drizzle/0000_ambiguous_master_chief.sql", "utf8") +
     "\n--> statement-breakpoint\n" +
-    readFileSync("drizzle/0001_known_christian_walker.sql", "utf8");
+    readFileSync("drizzle/0001_known_christian_walker.sql", "utf8") +
+    "\n--> statement-breakpoint\n" +
+    readFileSync("drizzle/0002_smooth_ogun.sql", "utf8") +
+    "\n--> statement-breakpoint\n" +
+    readFileSync("drizzle/0003_material_diamondback.sql", "utf8") +
+    "\n--> statement-breakpoint\n" +
+    readFileSync("drizzle/0004_ambiguous_mathemanic.sql", "utf8");
   for (const statement of migration
     .split("--> statement-breakpoint")
     .map((s) => s.trim())
@@ -211,5 +232,237 @@ describe("permissions and constraints", () => {
     expect(
       (await db.query.moderationRecords.findMany()).length,
     ).toBeGreaterThan(0);
+  });
+});
+
+describe("production features", () => {
+  it("notifies thread author once for reply + repeated mention, respects self and read ownership", async () => {
+    await updateProfile(db, user, { handle: "alice", displayName: "Alice" });
+    const id = await thread();
+    await reply(db, other, id, "Hello @alice and @alice again");
+    expect(mentions("hey @alice @alice @bad! <img onerror=alert(1)>")).toEqual([
+      "alice",
+      "bad",
+    ]);
+    const list = await db.query.notifications.findMany();
+    expect(list).toHaveLength(1);
+    expect(list[0].userId).toBe(user.id);
+    expect(list[0].kind).toBe("thread_reply");
+    expect(await unreadCount(db, user)).toBe(1);
+    await markRead(db, other, list[0].id);
+    expect(await unreadCount(db, user)).toBe(1);
+    await markRead(db, user, list[0].id);
+    expect(await unreadCount(db, user)).toBe(0);
+    await expect(
+      reply(db, other, id, "Hello @alice and @alice again"),
+    ).rejects.toThrow("Too many requests");
+  });
+  it("mentions valid unique users only, including on edits without repeating old mentions", async () => {
+    await updateProfile(db, other, { handle: "bob_123", displayName: "Bob" });
+    const id = await createThread(db, user, {
+      categoryId,
+      title: "Mentions in first post",
+      body: "Hi @bob_123 @bob_123 @nobody",
+    });
+    const post = await firstPost(id);
+    expect(
+      (await db.query.notifications.findMany()).filter(
+        (n) => n.kind === "mention",
+      ),
+    ).toHaveLength(1);
+    await editPost(db, user, post.id, "Hi @bob_123 @bob_123 again");
+    expect(
+      (await db.query.notifications.findMany()).filter(
+        (n) => n.kind === "mention",
+      ),
+    ).toHaveLength(1);
+    await createThread(db, other, {
+      categoryId,
+      title: "My own mention test",
+      body: "Hey @bob_123 me",
+    });
+    expect(
+      (await db.query.notifications.findMany()).filter(
+        (n) => n.userId === other.id,
+      ),
+    ).toHaveLength(1);
+  });
+  it("bookmarks are private and unique, archived content is not bookmarkable", async () => {
+    const id = await thread();
+    await toggleBookmark(db, user, id);
+    expect(await db.query.bookmarks.findMany()).toHaveLength(1);
+    await expect(
+      db.insert(schema.bookmarks).values({ threadId: id, userId: user.id }),
+    ).rejects.toThrow();
+    await toggleBookmark(db, user, id);
+    expect(await db.query.bookmarks.findMany()).toHaveLength(0);
+    await moderateThread(db, mod, id, "archive");
+    await expect(toggleBookmark(db, other, id)).rejects.toThrow(
+      "Thread unavailable",
+    );
+  });
+  it("searches content and author safely while hiding archived/deleted threads", async () => {
+    await updateProfile(db, user, {
+      handle: "searchable",
+      displayName: "Alice",
+    });
+    const id = await thread();
+    await reply(db, other, id, "A phrase about meteors");
+    expect(
+      (await search(db, "meteors", 1)).rows.map((row) => row.thread.id),
+    ).toEqual([id]);
+    expect((await search(db, "searchable", 1)).rows).toHaveLength(1);
+    expect((await search(db, "%_", 1)).rows).toHaveLength(0);
+    await expect(search(db, "' OR 1=1--", 1)).resolves.toMatchObject({
+      rows: [],
+    });
+    await expect(search(db, " ", 1)).rejects.toThrow();
+    await moderateThread(db, mod, id, "archive");
+    expect((await search(db, "meteors", 1)).rows).toHaveLength(0);
+  });
+  it("limits atomically, isolates identities, expires buckets, rejects duplicate submissions", async () => {
+    const at = 1_700_000_000_000;
+    for (let i = 0; i < 5; i++) await limit(db, "thread", "client", at);
+    await expect(limit(db, "thread", "client", at)).rejects.toBeInstanceOf(
+      RateLimitError,
+    );
+    await limit(db, "thread", "different", at);
+    await limit(db, "thread", "client", at + 3600000);
+    await deduplicate(db, user.id, "test", "same");
+    await expect(
+      deduplicate(db, user.id, "test", "same"),
+    ).rejects.toBeInstanceOf(RateLimitError);
+    await deduplicate(db, other.id, "test", "same");
+  });
+  it("reports resolution with reason and audit, moderation notifications and role boundaries", async () => {
+    const id = await thread();
+    await reportContent(db, other, "thread", id, "Reasonable report details");
+    const report = (await db.query.reports.findFirst())!;
+    await expect(
+      resolveReport(db, user, report.id, "resolved"),
+    ).rejects.toThrow("Not permitted");
+    await resolveReport(
+      db,
+      mod,
+      report.id,
+      "resolved",
+      "Investigated the issue",
+    );
+    expect(
+      (await db.query.notifications.findMany()).some(
+        (n) => n.userId === other.id && n.kind === "report_resolved",
+      ),
+    ).toBe(true);
+    expect(
+      (await db.query.moderationRecords.findMany()).some(
+        (r) =>
+          r.action === "resolved_report" &&
+          r.reason === "Investigated the issue",
+      ),
+    ).toBe(true);
+    await moderateThread(db, mod, id, "lock", "Needed a cooldown");
+    expect(
+      (await db.query.notifications.findMany()).some(
+        (n) => n.userId === user.id && n.kind === "moderation",
+      ),
+    ).toBe(true);
+    await expect(moderateThread(db, user, id, "unlock")).rejects.toThrow();
+    await moderateThread(db, admin, id, "unlock");
+    expect(
+      (await db.query.moderationRecords.findMany()).filter(
+        (r) => r.threadId === id && r.action.includes("thread"),
+      ),
+    ).toHaveLength(2);
+    await updateCategory(db, admin, categoryId, {
+      name: "General",
+      slug: "general",
+      sortOrder: 2,
+    });
+    expect(
+      (await db.query.moderationRecords.findMany()).some(
+        (r) => r.categoryId === categoryId && r.action === "update_category",
+      ),
+    ).toBe(true);
+  });
+  it("validates avatars and payload sizes without filesystem or remote storage", async () => {
+    const png = new Uint8Array([
+      137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 0, 0, 0, 0, 0,
+    ]);
+    expect(avatarType(png, "image/png")).toBe("image/png");
+    expect(() => avatarType(png, "image/svg+xml")).toThrow();
+    expect(() =>
+      avatarType(new Uint8Array(1024 * 1024 + 1), "image/png"),
+    ).toThrow();
+    expect(avatarKey(user.id, "image/png")).toMatch(
+      /^avatars\/user-1\/[a-f0-9-]+\.png$/,
+    );
+    const request = new Request("https://example.com/api/avatar", {
+      method: "POST",
+      headers: { "content-type": "image/png" },
+      body: png,
+    });
+    expect((await readAvatar(request)).type).toBe("image/png");
+    const huge = new FormData();
+    huge.set("body", "x".repeat(85001));
+    expect(() => boundedForm(huge)).toThrow("Request too large");
+  });
+});
+
+describe("adversarial cases", () => {
+  it("only notifies a reply target inside the same thread and never trusts a guessed post id", async () => {
+    const a = await thread();
+    const b = await createThread(db, other, {
+      categoryId,
+      title: "Different thread here",
+      body: "Other opener",
+    });
+    const foreignPost = await firstPost(b);
+    await expect(
+      reply(db, user, a, "Reply to wrong post", foreignPost.id),
+    ).rejects.toThrow("Reply target unavailable");
+    expect(
+      (await db.query.posts.findMany({ where: eq(schema.posts.threadId, a) }))
+        .length,
+    ).toBe(1);
+    await reply(db, user, b, "Reply to your post", foreignPost.id);
+    expect(
+      (await db.query.notifications.findMany()).some(
+        (n) => n.userId === other.id && n.kind === "post_reply",
+      ),
+    ).toBe(true);
+    expect(
+      (await db.query.notifications.findMany()).filter(
+        (n) => n.userId === other.id,
+      ),
+    ).toHaveLength(1);
+  });
+  it("rejects archived report targets and prevents no-op edit spam", async () => {
+    const id = await thread(),
+      post = await firstPost(id);
+    await expect(editPost(db, user, post.id, "First post")).rejects.toThrow(
+      "Post has no changes",
+    );
+    await moderateThread(db, mod, id, "archive");
+    await expect(
+      reportContent(db, other, "thread", id, "This is an old thread"),
+    ).rejects.toThrow("Thread unavailable");
+    await expect(
+      reportContent(db, other, "post", post.id, "This is an old post"),
+    ).rejects.toThrow("Post unavailable");
+    await expect(toggleReaction(db, other, post.id, "like")).rejects.toThrow(
+      "Post unavailable",
+    );
+  });
+  it("blocks a second report submission and strips private identifiers from rate keys", async () => {
+    const id = await thread();
+    await reportContent(db, other, "thread", id, "A repeated report reason");
+    await expect(
+      reportContent(db, other, "thread", id, "A repeated report reason"),
+    ).rejects.toBeInstanceOf(RateLimitError);
+    expect(await db.query.reports.findMany()).toHaveLength(1);
+    expect(await fingerprint("private@example.com")).toMatch(/^[a-f0-9]{64}$/);
+    expect(await fingerprint("private@example.com")).toBe(
+      await fingerprint("private@example.com"),
+    );
   });
 });

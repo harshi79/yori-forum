@@ -5,6 +5,8 @@ import { users } from "@/db/schema";
 import { currentActor } from "@/lib/forum/context";
 import { Header, Shell } from "@/components/forum";
 import { ProfileForm } from "@/components/forms";
+import { AvatarUpload } from "@/components/avatar-upload";
+import { Avatar } from "@/components/avatar";
 export const dynamic = "force-dynamic";
 export default async function ProfilePage() {
   const actor = await currentActor();
@@ -24,6 +26,14 @@ export default async function ProfilePage() {
           </Link>
         </p>
         <div className="max-w-xl">
+          <Avatar
+            id={profile.id}
+            name={profile.displayName ?? profile.handle}
+            stored={profile.avatarUrl}
+            size={72}
+          />
+          <AvatarUpload />
+          <div className="mt-8" />
           <ProfileForm
             handle={profile.handle}
             displayName={profile.displayName}

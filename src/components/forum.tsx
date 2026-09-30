@@ -1,14 +1,19 @@
 import Link from "next/link";
 import type { Actor } from "@/lib/forum/permissions";
+import { unreadCount } from "@/lib/forum/extra";
+import { getDb } from "@/db/client";
+import { RefreshUnread } from "./refresh";
 export const panel =
   "rounded-2xl border border-white/10 bg-white/[0.035] p-5 sm:p-7";
 export const input =
   "w-full rounded-xl border border-white/15 bg-[#131524] px-4 py-3 text-white outline-none focus:border-violet-400";
 export const button =
   "rounded-xl bg-violet-400 px-5 py-2.5 font-semibold text-[#171226] hover:bg-violet-300 disabled:opacity-50";
-export function Header({ actor }: { actor?: Actor | null }) {
+export async function Header({ actor }: { actor?: Actor | null }) {
+  const count = actor ? await unreadCount(getDb(), actor) : 0;
   return (
     <header className="border-b border-white/10">
+      {actor && <RefreshUnread />}
       <nav className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-5 py-5">
         <Link href="/community" className="text-xl font-bold">
           ✳ yori<span className="text-violet-400">.</span>
@@ -17,6 +22,19 @@ export function Header({ actor }: { actor?: Actor | null }) {
           <Link href="/community" className="hover:text-white">
             Explore
           </Link>
+          <Link href="/search" className="hover:text-white">
+            Search
+          </Link>
+          {actor && (
+            <Link href="/bookmarks" className="hover:text-white">
+              Saved
+            </Link>
+          )}
+          {actor && (
+            <Link href="/notifications" className="text-violet-300">
+              Updates{count > 0 ? ` (${count > 99 ? "99+" : count})` : ""}
+            </Link>
+          )}
           {actor && (
             <Link href="/profile" className="hover:text-white">
               My profile

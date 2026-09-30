@@ -1,6 +1,8 @@
 import type { CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import { getDb } from "@/db/client";
+import { limit, fingerprint, RateLimitError } from "@/lib/forum/rate";
 
 export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get("code");
@@ -14,6 +16,20 @@ export async function GET(request: NextRequest) {
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !key)
     return NextResponse.redirect(new URL("/login?error=config", request.url));
+  try {
+    await limit(
+      getDb(),
+      "login",
+      `callback:${await fingerprint(request.headers.get("cf-connecting-ip") ?? "unverified")}`,
+    );
+  } catch (e) {
+    if (e instanceof RateLimitError)
+      return new NextResponse("Too many sign-in attempts", {
+        status: 429,
+        headers: { "Retry-After": String(e.retryAfter) },
+      });
+    throw e;
+  }
   const response = NextResponse.redirect(destination);
   const supabase = createServerClient(url, key, {
     cookies: {

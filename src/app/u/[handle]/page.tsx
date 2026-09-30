@@ -4,6 +4,7 @@ import { getDb } from "@/db/client";
 import { users } from "@/db/schema";
 import { optionalActor } from "@/lib/forum/context";
 import { Header, Shell, DateLabel, panel } from "@/components/forum";
+import { Avatar } from "@/components/avatar";
 export const dynamic = "force-dynamic";
 export default async function PublicProfile({
   params,
@@ -32,9 +33,12 @@ export default async function PublicProfile({
       <Header actor={actor} />
       <Shell>
         <div className={panel}>
-          <div className="grid size-20 place-items-center rounded-full bg-violet-400/20 text-3xl text-violet-200">
-            {(profile.displayName ?? profile.handle)[0]?.toUpperCase()}
-          </div>
+          <Avatar
+            id={profile.id}
+            name={profile.displayName ?? profile.handle}
+            stored={profile.avatarUrl}
+            size={80}
+          />
           <h1 className="mt-6 text-4xl font-semibold">
             {profile.displayName ?? profile.handle}
           </h1>

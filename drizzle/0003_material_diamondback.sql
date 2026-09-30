@@ -1,0 +1,1 @@
+ALTER TABLE `moderation_records` ADD `category_id` text REFERENCES categories(id);

@@ -186,6 +186,7 @@ export const bookmarks = sqliteTable(
   (t) => [
     primaryKey({ columns: [t.userId, t.threadId] }),
     index("bookmarks_thread_idx").on(t.threadId),
+    index("bookmarks_user_created_idx").on(t.userId, t.createdAt),
   ],
 );
 
@@ -204,16 +205,23 @@ export const notifications = sqliteTable(
     }),
     kind: text("kind").notNull(),
     message: text("message").notNull(),
+    href: text("href").notNull().default("/community"),
     readAt: timestamp("read_at"),
     createdAt: createdAt(),
   },
-  (t) => [index("notifications_user_created_idx").on(t.userId, t.createdAt)],
+  (t) => [
+    index("notifications_user_created_idx").on(t.userId, t.createdAt),
+    index("notifications_unread_idx").on(t.userId, t.readAt),
+  ],
 );
 
 export const moderationRecords = sqliteTable(
   "moderation_records",
   {
     id: text("id").primaryKey(),
+    categoryId: text("category_id").references(() => categories.id, {
+      onDelete: "set null",
+    }),
     moderatorId: text("moderator_id").references(() => users.id, {
       onDelete: "set null",
     }),
@@ -310,4 +318,15 @@ export const reports = sqliteTable(
       sql`${t.status} in ('open', 'resolved', 'dismissed')`,
     ),
   ],
+);
+
+// Atomic fixed-window counters shared by all Workers; no per-isolate memory or Redis.
+export const rateLimits = sqliteTable(
+  "rate_limits",
+  {
+    key: text("key").primaryKey(),
+    count: integer("count").notNull().default(0),
+    expiresAt: integer("expires_at").notNull(),
+  },
+  (t) => [index("rate_limits_expires_idx").on(t.expiresAt)],
 );

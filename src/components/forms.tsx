@@ -67,10 +67,24 @@ export function ThreadForm({ categoryId }: { categoryId: string }) {
     </Form>
   );
 }
-export function ReplyForm({ threadId }: { threadId: string }) {
+export function ReplyForm({
+  threadId,
+  parentId,
+}: {
+  threadId: string;
+  parentId?: string;
+}) {
   return (
     <Form action={replyAction} label="Post a reply">
       <input type="hidden" name="threadId" value={threadId} />
+      {parentId && (
+        <>
+          <input type="hidden" name="parentId" value={parentId} />
+          <p className="text-xs text-violet-300">
+            Replying to a post in this thread
+          </p>
+        </>
+      )}
       <textarea
         className={input}
         name="body"

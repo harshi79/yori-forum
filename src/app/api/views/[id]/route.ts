@@ -3,15 +3,37 @@ import { eq, isNull, and, sql } from "drizzle-orm";
 import { getDb } from "@/db/client";
 import { threads } from "@/db/schema";
 import { identifier } from "@/lib/forum/validation";
+import { ForumError } from "@/lib/forum/permissions";
+import { limit, fingerprint, RateLimitError } from "@/lib/forum/rate";
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    if (
+      request.headers.get("origin") &&
+      request.headers.get("origin") !== request.nextUrl.origin
+    )
+      return new NextResponse(null, { status: 403 });
     const id = identifier((await params).id);
     if (request.cookies.get("yori_recent_view")?.value === id)
       return new NextResponse(null, { status: 204 });
-    const rows = await getDb()
+    const db = getDb();
+    try {
+      await limit(
+        db,
+        "view",
+        `ip:${await fingerprint(request.headers.get("cf-connecting-ip") ?? "unverified")}`,
+      );
+    } catch (e) {
+      if (e instanceof RateLimitError)
+        return new NextResponse(null, {
+          status: 429,
+          headers: { "Retry-After": String(e.retryAfter) },
+        });
+      throw e;
+    }
+    const rows = await db
       .update(threads)
       .set({ viewCount: sql`${threads.viewCount} + 1` })
       .where(
@@ -32,7 +54,9 @@ export async function POST(
       path: "/",
     });
     return response;
-  } catch {
-    return new NextResponse(null, { status: 400 });
+  } catch (e) {
+    return new NextResponse(null, {
+      status: e instanceof ForumError ? 400 : 503,
+    });
   }
 }

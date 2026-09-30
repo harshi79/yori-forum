@@ -15,6 +15,27 @@
       "when": 1790773396242,
       "tag": "0001_known_christian_walker",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1790773965388,
+      "tag": "0002_smooth_ogun",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1790774038122,
+      "tag": "0003_material_diamondback",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1790774462222,
+      "tag": "0004_ambiguous_mathemanic",
+      "breakpoints": true
     }
   ]
 }

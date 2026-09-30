@@ -2,7 +2,7 @@ import Link from "next/link";
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { getDb } from "@/db/client";
-import { threads, posts, users } from "@/db/schema";
+import { threads, posts, users, bookmarks } from "@/db/schema";
 import { optionalActor } from "@/lib/forum/context";
 import {
   canEdit,
@@ -23,8 +23,10 @@ import {
   threadAction,
   removePostAction,
   reactionAction,
+  bookmarkAction,
 } from "@/lib/forum/actions";
 import { RecordView } from "@/components/view";
+import { Avatar } from "@/components/avatar";
 const LIMIT = 20;
 export const dynamic = "force-dynamic";
 export default async function ThreadPage({
@@ -32,7 +34,7 @@ export default async function ThreadPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ page?: string }>;
+  searchParams: Promise<{ page?: string; replyTo?: string }>;
 }) {
   const id = identifier((await params).id),
     page = pageNumber((await searchParams).page),
@@ -47,6 +49,11 @@ export default async function ThreadPage({
   });
   if (!thread || thread.category.archivedAt) notFound();
   const actor = await optionalActor();
+  const bookmarked = actor
+    ? !!(await db.query.bookmarks.findFirst({
+        where: and(eq(bookmarks.userId, actor.id), eq(bookmarks.threadId, id)),
+      }))
+    : false;
   const list = await db
     .select({
       post: posts,
@@ -98,8 +105,20 @@ export default async function ThreadPage({
         </div>
         {actor && (
           <div className="mb-8 flex flex-wrap gap-3 text-sm">
+            <form action={bookmarkAction}>
+              <input type="hidden" name="id" value={id} />
+              <button className="text-violet-300">
+                {bookmarked ? "★ Saved · Remove" : "☆ Save thread"}
+              </button>
+            </form>
             {(canModerate(actor) || actor.id === thread.authorId) && (
               <form action={threadAction}>
+                <input
+                  name="reason"
+                  placeholder="Reason (optional)"
+                  maxLength={500}
+                  className="mr-2 w-40 rounded border border-white/15 bg-white/5 px-2 py-1"
+                />
                 <input type="hidden" name="id" value={id} />
                 <button
                   name="operation"
@@ -128,6 +147,12 @@ export default async function ThreadPage({
                   </form>
                 ))}
                 <form action={threadAction}>
+                  <input
+                    name="reason"
+                    placeholder="Reason (optional)"
+                    maxLength={500}
+                    className="mr-2 w-40 rounded border border-white/15 bg-white/5 px-2 py-1"
+                  />
                   <input type="hidden" name="id" value={id} />
                   <button
                     name="operation"
@@ -149,11 +174,15 @@ export default async function ThreadPage({
                 <article key={post.id} id={`post-${post.id}`} className={panel}>
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="flex items-center gap-3">
-                      <span className="grid size-9 place-items-center rounded-full bg-violet-400/20 text-violet-200">
-                        {(author?.displayName ??
+                      <Avatar
+                        id={author?.id ?? "missing"}
+                        name={
+                          author?.displayName ??
                           author?.handle ??
-                          "?")[0]?.toUpperCase()}
-                      </span>
+                          "Former member"
+                        }
+                        stored={author?.avatarUrl}
+                      />
                       <div>
                         <p className="font-medium">
                           {author ? (
@@ -251,6 +280,14 @@ export default async function ThreadPage({
                               </form>
                             </>
                           )}
+                        {actor && !thread.isLocked && (
+                          <Link
+                            href={`/threads/${id}?replyTo=${post.id}#reply`}
+                            className="text-violet-300"
+                          >
+                            Reply
+                          </Link>
+                        )}
                         {actor && <ReportForm id={post.id} target="post" />}
                       </div>
                     </>
@@ -271,11 +308,11 @@ export default async function ThreadPage({
             <ReportForm id={id} target="thread" />
           </div>
         )}
-        <div className="mt-12">
+        <div id="reply" className="mt-12">
           {thread.isLocked ? (
             <p className="text-slate-400">This discussion is locked.</p>
           ) : actor ? (
-            <ReplyForm threadId={id} />
+            <ReplyForm threadId={id} parentId={(await searchParams).replyTo} />
           ) : (
             <p className="text-slate-400">
               <Link href="/login" className="text-violet-300">
