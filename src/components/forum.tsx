@@ -3,6 +3,8 @@ import type { Actor } from "@/lib/forum/permissions";
 import { unreadCount } from "@/lib/forum/extra";
 import { getDb } from "@/db/client";
 import { RefreshUnread } from "./refresh";
+import { SubmitButton } from "./submit-button";
+import { signOutAction } from "@/lib/auth/actions";
 export const panel =
   "rounded-2xl border border-white/10 bg-white/[0.035] p-5 sm:p-7";
 export const input =
@@ -44,6 +46,16 @@ export async function Header({ actor }: { actor?: Actor | null }) {
             <Link href="/moderation">Reports</Link>
           )}
           {actor?.role === "admin" && <Link href="/admin">Manage</Link>}
+          {actor && (
+            <form action={signOutAction}>
+              <SubmitButton
+                className="text-slate-400 hover:text-white"
+                pendingLabel="Leaving…"
+              >
+                Sign out
+              </SubmitButton>
+            </form>
+          )}
           {!actor && (
             <Link href="/login" className="text-violet-300">
               Sign in →

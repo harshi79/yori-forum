@@ -4,3 +4,5 @@ node_modules
 .wrangler
 package-lock.json
 drizzle
+test-results
+playwright-report

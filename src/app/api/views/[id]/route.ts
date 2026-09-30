@@ -4,6 +4,7 @@ import { getDb } from "@/db/client";
 import { threads } from "@/db/schema";
 import { identifier } from "@/lib/forum/validation";
 import { ForumError } from "@/lib/forum/permissions";
+import { isSameOrigin } from "@/lib/forum/origin";
 import { limit, fingerprint, RateLimitError } from "@/lib/forum/rate";
 export async function POST(
   request: NextRequest,
@@ -12,7 +13,7 @@ export async function POST(
   try {
     if (
       request.headers.get("origin") &&
-      request.headers.get("origin") !== request.nextUrl.origin
+      !isSameOrigin(request.headers.get("origin"), request.headers.get("host"))
     )
       return new NextResponse(null, { status: 403 });
     const id = identifier((await params).id);

@@ -1,9 +1,10 @@
+import { notFound } from "next/navigation";
 import Link from "next/link";
 import { desc, inArray, isNotNull, isNull, and } from "drizzle-orm";
 import { getDb } from "@/db/client";
 import { reports, moderationRecords, posts, threads, users } from "@/db/schema";
 import { currentActor } from "@/lib/forum/context";
-import { assertAllowed, canModerate } from "@/lib/forum/permissions";
+import { canModerate } from "@/lib/forum/permissions";
 import { resolveReportAction, threadAction } from "@/lib/forum/actions";
 import {
   Header,
@@ -22,7 +23,7 @@ export default async function Moderation({
   searchParams: Promise<{ page?: string }>;
 }) {
   const actor = await currentActor();
-  assertAllowed(canModerate(actor));
+  if (!canModerate(actor)) notFound();
   const page = pageNumber((await searchParams).page),
     db = getDb();
   const [list, records, archived] = await Promise.all([
@@ -145,16 +146,18 @@ export default async function Moderation({
                       maxLength={500}
                       className="rounded-xl border border-white/15 bg-white/5 p-2"
                     />
-                    <button name="status" value="resolved" className={button}>
-                      Resolve
-                    </button>
-                    <button
+                    <label className="sr-only" htmlFor={`decision-${r.id}`}>
+                      Decision
+                    </label>
+                    <select
+                      id={`decision-${r.id}`}
                       name="status"
-                      value="dismissed"
-                      className="text-slate-300"
+                      className="rounded-xl border border-white/15 bg-[#131524] p-2"
                     >
-                      Dismiss
-                    </button>
+                      <option value="resolved">Resolve</option>
+                      <option value="dismissed">Dismiss</option>
+                    </select>
+                    <button className={button}>Apply decision</button>
                   </form>
                 )}
               </article>
@@ -192,11 +195,8 @@ export default async function Moderation({
                 {r.threadId && threadMap.get(r.threadId)?.archivedAt && (
                   <form action={threadAction} className="mt-3">
                     <input type="hidden" name="id" value={r.threadId} />
-                    <button
-                      name="operation"
-                      value="restore"
-                      className="text-sm text-violet-300"
-                    >
+                    <input type="hidden" name="operation" value="restore" />
+                    <button className="text-sm text-violet-300">
                       Restore archived thread
                     </button>
                   </form>
@@ -226,11 +226,8 @@ export default async function Moderation({
                     maxLength={500}
                     className="mr-3 rounded-xl border border-white/15 bg-white/5 p-2"
                   />
-                  <button
-                    name="operation"
-                    value="restore"
-                    className="text-sm text-violet-300"
-                  >
+                  <input type="hidden" name="operation" value="restore" />
+                  <button className="text-sm text-violet-300">
                     Restore thread
                   </button>
                 </form>

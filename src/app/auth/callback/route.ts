@@ -1,3 +1,4 @@
+import { authCookieOptions } from "@/lib/auth/cookie-options";
 import type { CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
@@ -32,6 +33,7 @@ export async function GET(request: NextRequest) {
   }
   const response = NextResponse.redirect(destination);
   const supabase = createServerClient(url, key, {
+    cookieOptions: authCookieOptions(),
     cookies: {
       getAll: () => request.cookies.getAll(),
       setAll: (

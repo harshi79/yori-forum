@@ -1,14 +1,15 @@
+import { notFound } from "next/navigation";
 import { asc } from "drizzle-orm";
 import { getDb } from "@/db/client";
 import { categories } from "@/db/schema";
 import { currentActor } from "@/lib/forum/context";
-import { assertAllowed, canAdmin } from "@/lib/forum/permissions";
+import { canAdmin } from "@/lib/forum/permissions";
 import { Header, Shell } from "@/components/forum";
 import { CategoryForm, RoleForm } from "@/components/forms";
 export const dynamic = "force-dynamic";
 export default async function Admin() {
   const actor = await currentActor();
-  assertAllowed(canAdmin(actor));
+  if (!canAdmin(actor)) notFound();
   const list = await getDb().query.categories.findMany({
     orderBy: asc(categories.sortOrder),
   });

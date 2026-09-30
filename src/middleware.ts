@@ -1,3 +1,4 @@
+import { authCookieOptions } from "@/lib/auth/cookie-options";
 import type { CookieOptions } from "@supabase/ssr";
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
@@ -8,6 +9,7 @@ export async function middleware(request: NextRequest) {
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !key) return response;
   const supabase = createServerClient(url, key, {
+    cookieOptions: authCookieOptions(),
     cookies: {
       getAll: () => request.cookies.getAll(),
       setAll: (
@@ -25,7 +27,7 @@ export async function middleware(request: NextRequest) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (request.nextUrl.pathname.startsWith("/community") && !user) {
+  if (request.nextUrl.pathname.startsWith("/profile") && !user) {
     const redirect = NextResponse.redirect(new URL("/login", request.url));
     response.cookies.getAll().forEach((cookie) => redirect.cookies.set(cookie));
     return redirect;
@@ -34,5 +36,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/community/:path*", "/login", "/auth/callback"],
+  matcher: ["/profile/:path*", "/login", "/auth/callback"],
 };

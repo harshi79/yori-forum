@@ -25,7 +25,11 @@ export async function requestMagicLink(
     const supabase = await createSupabaseServerClient();
     // Origin must come from trusted config, not Host / X-Forwarded-Host headers.
     const origin = process.env.APP_ORIGIN;
-    if (!origin || !/^https?:\/\/[^/]+$/.test(origin))
+    if (
+      !origin ||
+      !/^https?:\/\/[^/]+$/.test(origin) ||
+      (process.env.NODE_ENV === "production" && !origin.startsWith("https://"))
+    )
       throw new Error("APP_ORIGIN missing");
     const { error } = await supabase.auth.signInWithOtp({
       email,

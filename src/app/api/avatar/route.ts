@@ -2,7 +2,7 @@ import { eq, and, isNull } from "drizzle-orm";
 import { NextResponse, type NextRequest } from "next/server";
 import { getDb } from "@/db/client";
 import { users } from "@/db/schema";
-import { currentActor } from "@/lib/forum/context";
+import { optionalActor } from "@/lib/forum/context";
 import {
   avatarBucket,
   avatarKey,
@@ -11,8 +11,12 @@ import {
 } from "@/lib/forum/avatar";
 import { limit, RateLimitError } from "@/lib/forum/rate";
 import { ForumError } from "@/lib/forum/permissions";
+import { isSameOrigin } from "@/lib/forum/origin";
 function sameOrigin(request: NextRequest) {
-  return request.headers.get("origin") === request.nextUrl.origin;
+  return isSameOrigin(
+    request.headers.get("origin"),
+    request.headers.get("host"),
+  );
 }
 function errorResponse(error: unknown) {
   const status =
@@ -42,8 +46,10 @@ export async function POST(request: NextRequest) {
   if (Number(request.headers.get("content-length")) > MAX_AVATAR_BYTES + 1024)
     return new NextResponse(null, { status: 413 });
   try {
-    const actor = await currentActor(),
-      db = getDb();
+    const actor = await optionalActor();
+    if (!actor)
+      return NextResponse.json({ error: "Sign in required" }, { status: 401 });
+    const db = getDb();
     await limit(db, "avatar", actor.id);
     const bucket = await avatarBucket();
     if (!bucket)
@@ -87,8 +93,10 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   if (!sameOrigin(request)) return new NextResponse(null, { status: 403 });
   try {
-    const actor = await currentActor(),
-      db = getDb();
+    const actor = await optionalActor();
+    if (!actor)
+      return NextResponse.json({ error: "Sign in required" }, { status: 401 });
+    const db = getDb();
     await limit(db, "avatar", actor.id);
     const bucket = await avatarBucket();
     if (!bucket)

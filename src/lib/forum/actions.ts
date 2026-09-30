@@ -6,6 +6,8 @@ import { currentActor } from "./context";
 import * as forum from "./service";
 import { assertAllowed, canAdmin, canModerate } from "./permissions";
 import { boundedForm } from "./requests";
+import { logOperationalError } from "@/lib/ops/log";
+import { ForumError } from "./permissions";
 import { toggleBookmark, markRead } from "./extra";
 import { identifier } from "./validation";
 
@@ -18,6 +20,8 @@ async function attempt(fn: () => Promise<void>): Promise<ActionState> {
   } catch (error) {
     if (error instanceof Error && error.message === "NEXT_REDIRECT")
       throw error;
+    if (!(error instanceof ForumError))
+      logOperationalError("forum.action", error);
     return { error: forum.asMessage(error) };
   }
 }

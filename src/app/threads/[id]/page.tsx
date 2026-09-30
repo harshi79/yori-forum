@@ -26,6 +26,7 @@ import {
   bookmarkAction,
 } from "@/lib/forum/actions";
 import { RecordView } from "@/components/view";
+import { SubmitButton } from "@/components/submit-button";
 import { Avatar } from "@/components/avatar";
 const LIMIT = 20;
 export const dynamic = "force-dynamic";
@@ -107,9 +108,9 @@ export default async function ThreadPage({
           <div className="mb-8 flex flex-wrap gap-3 text-sm">
             <form action={bookmarkAction}>
               <input type="hidden" name="id" value={id} />
-              <button className="text-violet-300">
+              <SubmitButton className="text-violet-300">
                 {bookmarked ? "★ Saved · Remove" : "☆ Save thread"}
-              </button>
+              </SubmitButton>
             </form>
             {(canModerate(actor) || actor.id === thread.authorId) && (
               <form action={threadAction}>
@@ -120,13 +121,8 @@ export default async function ThreadPage({
                   className="mr-2 w-40 rounded border border-white/15 bg-white/5 px-2 py-1"
                 />
                 <input type="hidden" name="id" value={id} />
-                <button
-                  name="operation"
-                  value="archive"
-                  className="text-rose-300"
-                >
-                  Archive thread
-                </button>
+                <input type="hidden" name="operation" value="archive" />
+                <button className="text-rose-300">Archive thread</button>
               </form>
             )}
             {canModerate(actor) && (
@@ -137,11 +133,12 @@ export default async function ThreadPage({
                 ].map(([yes, no, active]) => (
                   <form key={String(yes)} action={threadAction}>
                     <input type="hidden" name="id" value={id} />
-                    <button
+                    <input
+                      type="hidden"
                       name="operation"
                       value={active ? String(no) : String(yes)}
-                      className="text-violet-300"
-                    >
+                    />
+                    <button className="text-violet-300">
                       {active ? String(no) : String(yes)}
                     </button>
                   </form>
@@ -154,13 +151,8 @@ export default async function ThreadPage({
                     className="mr-2 w-40 rounded border border-white/15 bg-white/5 px-2 py-1"
                   />
                   <input type="hidden" name="id" value={id} />
-                  <button
-                    name="operation"
-                    value="delete"
-                    className="text-rose-300"
-                  >
-                    Remove thread
-                  </button>
+                  <input type="hidden" name="operation" value="delete" />
+                  <button className="text-rose-300">Remove thread</button>
                 </form>
               </>
             )}
@@ -232,14 +224,11 @@ export default async function ThreadPage({
                                   name="threadId"
                                   value={id}
                                 />
-                                <button
-                                  name="kind"
-                                  value={kind}
-                                  className="hover:text-violet-300"
-                                >
+                                <input type="hidden" name="kind" value={kind} />
+                                <SubmitButton className="hover:text-violet-300">
                                   {["♥", "❤️", "✦"][i]} {kind}{" "}
                                   {[likes, hearts, insights][i]}
-                                </button>
+                                </SubmitButton>
                               </form>
                             ),
                           )}
@@ -274,9 +263,9 @@ export default async function ThreadPage({
                                   name="threadId"
                                   value={id}
                                 />
-                                <button className="text-rose-300">
+                                <SubmitButton className="text-rose-300">
                                   Remove
-                                </button>
+                                </SubmitButton>
                               </form>
                             </>
                           )}
