@@ -18,17 +18,18 @@ Open `http://localhost:3000`.
 
 **Structure (fixed — there is exactly one channel and one group):**
 
-- **YoriMethods** — channel. Only the owner and admins can post. Everyone else reads and reacts.
+- **YoriMethods** — broadcast channel. Only admins can publish, edit, or delete channel posts; readers can react. Channel posts always appear on the left as posts from the channel, including the author's own posts.
 - **Yori Chat** — group. Everyone posts. Every new channel post is auto-forwarded here and pinned at the top; the previous pinned post becomes a normal message (nothing is deleted).
 
 **Reactions:**
 
-- Everyone can react, in the channel or on the forwarded copy in the group — counts are shared and identical in both places.
+- Everyone can react, in the channel or on the forwarded copy in the group — counts are shared and identical in both places. Use the quick 👍 button or choose another reaction.
 - One reaction per user per post. Picking a different emoji moves your reaction.
 
 **Admins:**
 
-- Admins can post in the channel.
+- Admins can publish, edit, and delete any channel post, and can update the channel or group name, description, and picture link.
+- Regular users can edit or delete their own group messages; admins can remove group messages. Channel forwards in the group always resolve to the original channel post.
 - Only the owner can add or remove admins. The owner is the first registered account and cannot be demoted.
 
 **Usernames:**
@@ -39,11 +40,14 @@ Open `http://localhost:3000`.
 **Messages:**
 
 - Emoji shortcodes: type `:fire:` `:omg:` `:100:` `:tada:` etc. — an autocomplete pops up while typing, or use the emoji button next to the input. Around 80 shortcodes available.
-- Links are clickable. Emoji-only messages render big.
+- Links are clickable. A standalone direct HTTPS image URL previews inline; direct MP4/WebM links play in the post, and YouTube/Vimeo links embed a player. Emoji-only messages render big.
+- Media is link-only: upload images to Catbox or another external host, then paste the direct URL. Yori does not upload or store image/video files; it stores the message text and URLs only. There are no video uploads.
 - Right-click a message for copy text / copy link / react / edit / delete. Double-click to ❤️.
 - Every message has a shareable link (`/r/yorimethods?m=123`) — copying it from the right-click menu and opening it jumps straight to that message.
 
 **Live:** new messages, reactions, pins, typing indicators and online status arrive instantly (SSE, with polling fallback).
+
+**Room info:** admins can change the channel and group names, descriptions, and picture links. Open either room header to manage it.
 
 **Admin panel:** members list, add/remove admins (owner only), download a JSON backup.
 
@@ -85,7 +89,7 @@ Free hosts with ephemeral disks will lose `data/db.json` on redeploy — keep ba
 
 - Passwords hashed with scrypt and a per-user salt.
 - Sessions are 256-bit random tokens in HttpOnly cookies.
-- All user input is escaped; links are sanitized to http(s).
+- All user input is escaped; links are sanitized to http(s). Channel picture URLs must be public HTTPS image links. Media remains hosted by the external URL provider.
 - Simple rate limiting on messages.
 - Right user, right scale: a JSON file store is meant for communities of friends and followers, not thousands of concurrent users.
 

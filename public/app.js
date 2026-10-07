@@ -74,6 +74,61 @@
       .replace(/\n/g, '<br>');
   }
 
+  // Images and videos are never uploaded to Yori. A standalone external URL
+  // can be previewed inline; video pages/files remain links, not stored media.
+  function externalHttpsUrl(value) {
+    try {
+      const url = new URL(String(value || '').trim());
+      const host = url.hostname.toLowerCase();
+      if (url.protocol !== 'https:' || !host || url.username || url.password) return null;
+      if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') || host.startsWith('[')) return null;
+      if (/^\d{1,3}(?:\.\d{1,3}){3}$/.test(host)) return null;
+      return url;
+    } catch (e) { return null; }
+  }
+
+  function mediaInfo(value) {
+    const url = externalHttpsUrl(value);
+    if (!url) return null;
+    const host = url.hostname.toLowerCase().replace(/^www\./, '');
+    if (host === 'youtu.be' || host === 'youtube.com' || host === 'm.youtube.com' || host === 'youtube-nocookie.com') {
+      const id = host === 'youtu.be' ? url.pathname.slice(1).split('/')[0] :
+        (url.pathname === '/watch' ? url.searchParams.get('v') : url.pathname.match(/^\/(?:embed|shorts)\/([^/]+)/)?.[1]);
+      if (id && /^[a-zA-Z0-9_-]{6,20}$/.test(id)) {
+        return { type: 'embed', url: 'https://www.youtube-nocookie.com/embed/' + id };
+      }
+    }
+    if (host === 'vimeo.com' || host === 'player.vimeo.com') {
+      const id = url.pathname.match(/\/(?:video\/)?(\d+)(?:\/|$)/)?.[1];
+      if (id) return { type: 'embed', url: 'https://player.vimeo.com/video/' + id };
+    }
+    const ext = url.pathname.split('.').pop().toLowerCase();
+    if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'avif', 'bmp'].includes(ext)) {
+      return { type: 'image', url: url.href };
+    }
+    if (['mp4', 'webm', 'ogv', 'ogg'].includes(ext)) {
+      return { type: 'video', url: url.href, mime: ({ mp4: 'video/mp4', webm: 'video/webm', ogv: 'video/ogg', ogg: 'video/ogg' })[ext] };
+    }
+    return null;
+  }
+
+  function renderMessageContent(text) {
+    return String(text).split('\n').map((line) => {
+      const trimmed = line.trim();
+      const media = /^https:\/\/\S+$/.test(trimmed) ? mediaInfo(trimmed) : null;
+      if (!media) return renderText(line);
+      if (media.type === 'image') {
+        const src = esc(media.url);
+        return '<a class="media-image-link" href="' + src + '" target="_blank" rel="noopener noreferrer"><img class="message-image" src="' + src + '" alt="Shared image" loading="lazy"></a>';
+      }
+      if (media.type === 'video') {
+        return '<div class="media-video-wrap"><video class="message-video" controls playsinline preload="metadata"><source src="' + esc(media.url) + '" type="' + media.mime + '">Your browser cannot play this video.</video></div>' +
+          '<a class="media-source" href="' + esc(media.url) + '" target="_blank" rel="noopener noreferrer">Open video link</a>';
+      }
+      return '<div class="media-video-wrap embed-wrap"><iframe class="message-embed" src="' + esc(media.url) + '" title="Video" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe></div>';
+    }).join('<br>');
+  }
+
   function isEmojiOnly(t) {
     const stripped = String(t).replace(/[\u200d\ufe0f\u{1f3fb}-\u{1f3ff}\s]/gu, '');
     const chars = Array.from(stripped);
@@ -290,11 +345,21 @@
   /* Sidebar                                                           */
   /* ---------------------------------------------------------------- */
 
+  function roomAvatarHtml(cls, room) {
+    const channel = room && room.type === 'channel';
+    const photo = room && externalHttpsUrl(room.photoUrl);
+    const color = channel ? 'var(--accent)' : colorFor(room && room.name);
+    const icon = channel ? ICONS.channel : ICONS.group;
+    return '<div class="' + (cls || 'room-avatar') + '" style="background:' + color + '">' + icon +
+      (photo ? '<img class="room-photo" src="' + esc(photo.href) + '" alt="" loading="lazy">' : '') + '</div>';
+  }
+
+  function channelAvatarHtml(cls, room) {
+    return roomAvatarHtml(cls || 'avatar', room || channelRoom());
+  }
+
   function roomIconHtml(room, cls) {
-    if (room.type === 'channel') {
-      return '<div class="' + (cls || 'room-avatar') + '" style="background:var(--accent)">' + ICONS.channel + '</div>';
-    }
-    return '<div class="' + (cls || 'room-avatar') + '" style="background:' + colorFor(room.name) + '">' + ICONS.group + '</div>';
+    return roomAvatarHtml(cls || 'room-avatar', room);
   }
 
   function previewText(room, lm) {
@@ -316,7 +381,7 @@
 
   function renderSidebar() {
     const list = $('#roomList');
-    list.innerHTML = '';
+    list.innerHTML = '<div class="room-list-label">YOUR SPACES</div>';
     for (const room of state.rooms) {
       const item = document.createElement('div');
       item.className = 'room-item' + (room.id === state.activeRoomId ? ' active' : '');
@@ -353,10 +418,13 @@
     if (!room) return;
     const av = $('#headAvatar');
     av.style.background = room.type === 'channel' ? 'var(--accent)' : colorFor(room.name);
-    av.innerHTML = room.type === 'channel' ? ICONS.channel : ICONS.group;
+    const photo = externalHttpsUrl(room.photoUrl);
+    av.innerHTML = (room.type === 'channel' ? ICONS.channel : ICONS.group) +
+      (photo ? '<img class="room-photo" src="' + esc(photo.href) + '" alt="">' : '');
     $('#headName').innerHTML = esc(room.name) + '<span class="type-tag">' + (room.type === 'channel' ? 'channel' : 'group') + '</span>';
     const word = room.type === 'channel' ? 'subscriber' + (state.users.size === 1 ? '' : 's') : 'member' + (state.users.size === 1 ? '' : 's');
-    $('#headSub').innerHTML = esc(state.users.size + ' ' + word) + ' · <span class="on">' + state.online.size + ' online</span>';
+    const description = room.description ? esc(room.description) + ' · ' : '';
+    $('#headSub').innerHTML = description + esc(state.users.size + ' ' + word) + ' · <span class="on">' + state.online.size + ' online</span>';
   }
 
   function renderPinBar() {
@@ -382,6 +450,8 @@
     const allowed = canPost(room);
     $('#mutedBar').classList.toggle('hidden', allowed);
     $('#composerRow').classList.toggle('hidden', !allowed);
+    $('#input').placeholder = room.type === 'channel' ? 'Broadcast a channel post' : 'Message';
+    $('#sendBtn').title = room.type === 'channel' ? 'Publish post' : 'Send';
   }
 
   /* ---------------------------------------------------------------- */
@@ -412,9 +482,15 @@
   function toolsHtml(m) {
     if (m.system) return '';
     const mine = m.userId === state.me.id;
-    let h = '<button class="tool-btn react-btn" title="React">' + ICONS.smile + '</button>';
-    if (mine) h += '<button class="tool-btn edit-btn" title="Edit">' + ICONS.pencil + '</button>';
-    if (mine || state.me.isAdmin) h += '<button class="tool-btn del-btn" title="Delete">' + ICONS.trash + '</button>';
+    const room = activeRoom();
+    const channelPost = !!(m.fromChannel || (room && room.type === 'channel'));
+    const canEdit = channelPost ? !!state.me.isAdmin : mine;
+    const canDelete = channelPost ? !!state.me.isAdmin : (mine || !!state.me.isAdmin);
+    const liked = !!(m.reactions && (m.reactions['👍'] || []).includes(state.me.id));
+    let h = '<button class="tool-btn like-btn' + (liked ? ' liked' : '') + '" title="Like" aria-label="Like">👍</button>' +
+      '<button class="tool-btn react-btn" title="More reactions" aria-label="More reactions">' + ICONS.smile + '</button>';
+    if (canEdit) h += '<button class="tool-btn edit-btn" title="Edit" aria-label="Edit">' + ICONS.pencil + '</button>';
+    if (canDelete) h += '<button class="tool-btn del-btn" title="Delete" aria-label="Delete">' + ICONS.trash + '</button>';
     return '<div class="msg-tools">' + h + '</div>';
   }
 
@@ -432,9 +508,15 @@
     }
 
     const fwd = !!m.fromChannel;
-    const mine = m.userId === state.me.id && !fwd;
     const room = activeRoom();
-    const grouped = prev && !prev.system && prev.userId === m.userId && !!prev.fromChannel === fwd && (m.ts - prev.ts) < 300000;
+    const channelFeed = !!room && room.type === 'channel';
+    // Channel posts are publications from the channel itself, not outgoing DMs
+    // from whichever administrator pressed send.
+    const mine = !channelFeed && m.userId === state.me.id && !fwd;
+    const grouped = prev && !prev.system && (channelFeed
+      ? !prev.fromChannel && !fwd && (m.ts - prev.ts) < 300000
+      : fwd ? !!prev.fromChannel && (m.ts - prev.ts) < 300000
+        : prev.userId === m.userId && !prev.fromChannel && (m.ts - prev.ts) < 300000);
     const user = state.users.get(m.userId) || { username: m.username || 'user', isAdmin: false };
     const resolved = m.text.replace(/:([a-zA-Z0-9_]{1,24}):/g, (all, n) => SHORTMAP[n.toLowerCase()] || all);
     const big = isEmojiOnly(resolved);
@@ -444,14 +526,14 @@
 
     let avatarHtml = '';
     if (!mine && !grouped) {
-      avatarHtml = fwd
-        ? '<div class="avatar" style="background:var(--accent)">' + ICONS.channel + '</div>'
+      avatarHtml = (fwd || channelFeed)
+        ? channelAvatarHtml('avatar', channelRoom())
         : '<div class="avatar letters" style="background:' + colorFor(user.username) + '">' + esc(initials(user.username)) + '</div>';
     }
 
     let headerHtml = '';
     if (!grouped) {
-      if (fwd) {
+      if (fwd || channelFeed) {
         const ch = channelRoom();
         headerHtml = '<div class="fwd-from">' + ICONS.channel + '<span>' + esc(ch ? ch.name : 'Channel') + '</span></div>';
       } else if (!mine && room && room.type === 'group') {
@@ -463,7 +545,7 @@
     const bodyHtml =
       '<div class="bubble' + (grouped ? '' : ' tail') + (big ? ' big' : '') + (fwd ? ' fwd' : '') + '">' +
         headerHtml +
-        '<div class="msg-text">' + (big ? esc(resolved) : renderText(m.text)) + '</div>' +
+        '<div class="msg-text">' + (big ? esc(resolved) : renderMessageContent(m.text)) + '</div>' +
         '<div class="msg-foot"><span class="msg-meta">' +
           (m.editedAt ? '<span class="edited">edited</span>' : '') + esc(fmtTime(m.ts)) +
         '</span></div>' +
@@ -508,15 +590,17 @@
     }
   }
 
-  function appendMessageDom(m) {
+  function appendMessageDom(m, forceBottom) {
     const list = $('#messages');
     const empty = list.querySelector('.empty');
     if (empty) empty.remove();
     const prev = state.messages[state.messages.length - 2];
     if (!prev || dayKey(prev.ts) !== dayKey(m.ts)) list.appendChild(dayDividerEl(m.ts));
     list.appendChild(messageEl(m, prev));
-    if (state.atBottom) {
+    if (state.atBottom || forceBottom) {
       list.scrollTo({ top: list.scrollHeight, behavior: 'smooth' });
+      state.atBottom = true;
+      $('#newPill').classList.add('hidden');
     } else {
       $('#newPill').classList.remove('hidden');
     }
@@ -572,6 +656,7 @@
   function startEdit(m) {
     state.editing = m;
     $('#editBar').classList.remove('hidden');
+    $('#editBar span').textContent = m.fromChannel || (activeRoom() && activeRoom().type === 'channel') ? 'Editing channel post' : 'Editing';
     const ta = $('#input');
     ta.value = m.text;
     autoSize();
@@ -719,6 +804,17 @@
     autoSize();
   }
 
+  function applyRoomUpdate(updated) {
+    if (!updated) return;
+    const room = state.rooms.find((r) => r.id === updated.id);
+    if (room) Object.assign(room, updated);
+    else state.rooms.push(updated);
+    renderSidebar();
+    renderHeader();
+    renderPinBar();
+    if (activeRoom() && (activeRoom().id === updated.id || updated.type === 'channel')) renderMessages({ anchor: false });
+  }
+
   /* ---------------------------------------------------------------- */
   /* Live events                                                       */
   /* ---------------------------------------------------------------- */
@@ -799,7 +895,7 @@
         const room = state.rooms.find((r) => r.id === ev.roomId);
         if (room) {
           room.lastMessage = {
-            text: msg.text, ts: msg.ts, userId: msg.userId, username: msg.username,
+            id: msg.id, text: msg.text, ts: msg.ts, userId: msg.userId, username: msg.username,
             system: !!msg.system, fromChannel: !!msg.fromChannel
           };
         }
@@ -811,7 +907,7 @@
         if (ev.roomId === state.activeRoomId) {
           if (!state.messages.some((m) => m.id === msg.id)) {
             state.messages.push(msg);
-            appendMessageDom(msg);
+            appendMessageDom(msg, mine);
           }
           if (!mine && document.hasFocus() && state.atBottom) {
             if (room) room._dirty = true;
@@ -833,24 +929,32 @@
         break;
       }
 
+      case 'room':
+        applyRoomUpdate(ev.room);
+        break;
+
       case 'delete': {
         const idx = state.messages.findIndex((m) => m.id === ev.messageId);
-        if (idx > -1) state.messages.splice(idx, 1);
-        const el = $('#messages [data-id="' + ev.messageId + '"]');
-        if (el) el.remove();
-        const room = state.rooms.find((r) => r.id === ev.roomId);
-        if (room && ev.roomId === state.activeRoomId && state.messages.length) {
-          const last = state.messages[state.messages.length - 1];
-          room.lastMessage = {
-            text: last.text, ts: last.ts, userId: last.userId, username: last.username,
-            system: !!last.system, fromChannel: !!last.fromChannel
-          };
+        if (idx > -1) {
+          state.messages.splice(idx, 1);
+          renderMessages({ anchor: false });
         }
+        const room = state.rooms.find((r) => r.id === ev.roomId);
+        if (room && Object.prototype.hasOwnProperty.call(ev, 'lastMessage')) room.lastMessage = ev.lastMessage;
         renderSidebar();
         break;
       }
 
       case 'update': {
+        const room = state.rooms.find((r) => r.id === ev.roomId);
+        if (room && room.lastMessage && room.lastMessage.id === ev.message.id) {
+          room.lastMessage = {
+            id: ev.message.id, text: ev.message.text, ts: ev.message.ts,
+            userId: ev.message.userId, username: ev.message.username,
+            system: !!ev.message.system, fromChannel: !!ev.message.fromChannel
+          };
+          renderSidebar();
+        }
         refreshMessage(ev.message);
         break;
       }
@@ -873,6 +977,7 @@
           if (wasAdmin !== ev.user.isAdmin) {
             renderSidebar();
             renderComposer();
+            renderMessages({ anchor: false });
             toast(ev.user.isAdmin ? 'You are now an admin' : 'Admin access removed');
           }
         }
@@ -949,12 +1054,16 @@
     const menu = document.createElement('div');
     menu.className = 'ctx-menu';
     const mine = m.userId === state.me.id;
+    const room = activeRoom();
+    const channelPost = !!(m.fromChannel || (room && room.type === 'channel'));
+    const canEdit = channelPost ? !!state.me.isAdmin : mine;
+    const canDelete = channelPost ? !!state.me.isAdmin : (mine || !!state.me.isAdmin);
     const items = [
       { id: 'copy', label: 'Copy text', icon: ICONS.copy },
       { id: 'link', label: 'Copy link', icon: ICONS.link },
       { id: 'react', label: 'React', icon: ICONS.smile },
-      mine && { id: 'edit', label: 'Edit', icon: ICONS.pencil },
-      (mine || state.me.isAdmin) && { id: 'del', label: 'Delete', icon: ICONS.trash, danger: true }
+      canEdit && { id: 'edit', label: 'Edit', icon: ICONS.pencil },
+      canDelete && { id: 'del', label: 'Delete', icon: ICONS.trash, danger: true }
     ].filter(Boolean);
 
     for (const it of items) {
@@ -1044,27 +1153,93 @@
       '</div>'
     ).join('');
 
+    const channel = room.type === 'channel';
+    const photo = externalHttpsUrl(room.photoUrl);
+    const canManageRoom = !!state.me.isAdmin;
+    const roomLabel = channel ? 'channel' : 'group';
+    const settingsHtml = canManageRoom
+      ? '<section><h3>' + (channel ? 'Channel settings' : 'Group settings') + '</h3>' +
+          '<div class="field"><label for="roomNameField">' + (channel ? 'Channel name' : 'Group name') + '</label><input id="roomNameField" maxlength="48" value="' + esc(room.name) + '"></div>' +
+          '<div class="field"><label for="roomDescriptionField">Description</label><textarea id="roomDescriptionField" rows="3" maxlength="500" placeholder="What is this ' + roomLabel + ' about?">' + esc(room.description || '') + '</textarea></div>' +
+          '<div class="field"><label for="roomPhotoField">' + (channel ? 'Channel' : 'Group') + ' picture URL</label><input id="roomPhotoField" type="url" maxlength="2048" value="' + esc(room.photoUrl || '') + '" placeholder="https://files.catbox.moe/photo.jpg"></div>' +
+          '<p class="sub">Host images on Catbox or another HTTPS host, then paste the direct image link. Yori stores the URL only; there is no file or video upload.</p>' +
+          '<button class="btn primary" id="saveRoomBtn" type="button">Save ' + roomLabel + ' details</button>' +
+        '</section>'
+      : (room.description ? '<section><h3>About</h3><p class="sub" style="margin-bottom:0">' + esc(room.description) + '</p></section>' : '');
+
     const ov = openModal(
-      '<h2>Chat info</h2>' +
-      '<p class="sub">' + (room.type === 'channel' ? 'Channel — only admins can post, everyone can react.' : 'Group — everyone can post. Channel posts arrive here automatically.') + '</p>' +
+      '<h2>' + (channel ? 'Channel info' : 'Chat info') + '</h2>' +
+      '<p class="sub">' + (channel ? 'A broadcast channel — only admins can publish or edit posts; everyone can react.' : 'Group — everyone can post. Channel posts arrive here automatically.') + '</p>' +
       '<div class="user-row" style="padding-left:0">' +
-        '<div class="uavatar big" style="background:' + (room.type === 'channel' ? 'var(--accent)' : colorFor(room.name)) + '">' +
-          (room.type === 'channel' ? ICONS.channel : ICONS.group) +
-        '</div>' +
+        roomAvatarHtml('uavatar big channel-info-avatar', room) +
         '<div><div class="uname" style="font-size:16px">' + esc(room.name) + '</div>' +
         '<span class="room-tag">' + room.type + '</span></div>' +
       '</div>' +
+      settingsHtml +
       '<section><h3>Invite link</h3>' +
-        '<div class="invite-box"><input readonly value="' + esc(link) + '" onclick="this.select()">' +
+        '<div class="invite-box"><input readonly id="inviteLink" value="' + esc(link) + '">' +
         '<button class="btn ghost" id="copyLinkBtn">' + ICONS.copy + 'Copy</button></div>' +
         '<p class="sub" style="margin:8px 0 0">Anyone with this link can join after signing in.</p>' +
       '</section>' +
       '<section><h3>Members (' + users.length + ')</h3><div style="max-height:210px;overflow-y:auto">' + membersHtml + '</div></section>'
     );
 
+    ov.querySelector('#inviteLink').addEventListener('focus', (e) => e.target.select());
     ov.querySelector('#copyLinkBtn').addEventListener('click', () => {
       copyText(link).then(() => toast('Link copied')).catch(() => toast(link));
     });
+    ov.querySelectorAll('.room-photo').forEach((img) => img.addEventListener('error', () => img.remove(), { once: true }));
+
+    const saveBtn = ov.querySelector('#saveRoomBtn');
+    if (saveBtn) saveBtn.addEventListener('click', async () => {
+      const name = ov.querySelector('#roomNameField').value.trim();
+      const description = ov.querySelector('#roomDescriptionField').value.trim();
+      const photoUrl = ov.querySelector('#roomPhotoField').value.trim();
+      if (!name || name.length > 48) { toast('Room name must be 1-48 characters'); return; }
+      if (description.length > 500) { toast('Description must be 500 characters or fewer'); return; }
+      if (photoUrl && (!externalHttpsUrl(photoUrl) || !mediaInfo(photoUrl) || mediaInfo(photoUrl).type !== 'image')) { toast('Use a direct HTTPS image link (JPG, PNG, GIF, WebP, or AVIF)'); return; }
+      saveBtn.disabled = true;
+      try {
+        const result = await api('/api/rooms/' + room.id, { method: 'PATCH', body: { name, description, photoUrl } });
+        applyRoomUpdate(result.room);
+        closeModal();
+        toast('Room details updated');
+      } catch (e) {
+        toast(e.message);
+        saveBtn.disabled = false;
+      }
+    });
+  }
+
+  function openMediaLinkModal() {
+    const ov = openModal(
+      '<h2>Add a media link</h2>' +
+      '<p class="sub">Paste a direct HTTPS image or video URL, or a YouTube/Vimeo link. Host images on Catbox or another service first — Yori stores only the link and does not accept uploads.</p>' +
+      '<form id="mediaLinkForm">' +
+        '<div class="field"><label for="mediaUrl">Media URL</label><input id="mediaUrl" type="url" required maxlength="2048" placeholder="https://files.catbox.moe/photo.jpg"></div>' +
+        '<div class="modal-actions"><button class="btn ghost" type="button" data-act="cancel">Cancel</button><button class="btn primary" type="submit">Insert link</button></div>' +
+      '</form>'
+    );
+    ov.querySelector('[data-act=cancel]').addEventListener('click', closeModal);
+    ov.querySelector('#mediaLinkForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const url = ov.querySelector('#mediaUrl').value.trim();
+      if (!mediaInfo(url)) { toast('Use an HTTPS image/video, YouTube, or Vimeo link'); return; }
+      const ta = $('#input');
+      const start = ta.selectionStart == null ? ta.value.length : ta.selectionStart;
+      const end = ta.selectionEnd == null ? start : ta.selectionEnd;
+      const before = ta.value.slice(0, start);
+      const after = ta.value.slice(end);
+      const prefix = before && !before.endsWith('\n') ? '\n' : '';
+      const suffix = after && !after.startsWith('\n') ? '\n' : '';
+      ta.value = before + prefix + url + suffix + after;
+      const cursor = (before + prefix + url).length;
+      ta.setSelectionRange(cursor, cursor);
+      autoSize();
+      closeModal();
+      ta.focus();
+    });
+    setTimeout(() => ov.querySelector('#mediaUrl').focus(), 0);
   }
 
   function openAdminPanel() {
@@ -1116,7 +1291,7 @@
     try { localStorage.setItem('yori-theme', theme); } catch (e) {}
     $('#themeBtn').innerHTML = theme === 'dark' ? ICONS.sun : ICONS.moon;
     const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute('content', theme === 'dark' ? '#17212b' : '#ffffff');
+    if (meta) meta.setAttribute('content', theme === 'dark' ? '#0d1310' : '#f5f7f5');
   }
 
   /* ---------------------------------------------------------------- */
@@ -1189,6 +1364,7 @@
     $('#sendBtn').addEventListener('click', sendCurrent);
     $('#cancelEdit').addEventListener('click', cancelEdit);
     $('#emojiBtn').addEventListener('click', toggleEmojiGrid);
+    $('#mediaBtn').addEventListener('click', openMediaLinkModal);
 
     const list = $('#messages');
     list.addEventListener('scroll', () => {
@@ -1212,6 +1388,13 @@
         const row = pill.closest('[data-id]');
         const m = state.messages.find((x) => x.id === Number(row.dataset.id));
         if (m) toggleReact(m, pill.dataset.emoji);
+        return;
+      }
+      const likeBtn = e.target.closest('.like-btn');
+      if (likeBtn) {
+        const row = likeBtn.closest('[data-id]');
+        const m = state.messages.find((x) => x.id === Number(row.dataset.id));
+        if (m) toggleReact(m, '👍');
         return;
       }
       const reactBtn = e.target.closest('.react-btn');
@@ -1264,6 +1447,10 @@
       closeEmojiPop();
       openCtxMenu(e.clientX, e.clientY, m);
     });
+
+    document.addEventListener('error', (e) => {
+      if (e.target && e.target.matches && e.target.matches('.room-photo')) e.target.remove();
+    }, true);
 
     document.addEventListener('click', (e) => {
       if (ctxMenu && !e.target.closest('.ctx-menu')) closeCtxMenu();
