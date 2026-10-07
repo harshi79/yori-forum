@@ -1,8 +1,0 @@
-services:
-  - type: web
-    name: yori-forum
-    runtime: node
-    plan: free
-    buildCommand: echo "Nothing to build — zero dependencies"
-    startCommand: node server.js
-    healthCheckPath: /healthz

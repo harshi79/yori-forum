@@ -436,7 +436,8 @@
     const room = activeRoom();
     const grouped = prev && !prev.system && prev.userId === m.userId && !!prev.fromChannel === fwd && (m.ts - prev.ts) < 300000;
     const user = state.users.get(m.userId) || { username: m.username || 'user', isAdmin: false };
-    const big = isEmojiOnly(m.text);
+    const resolved = m.text.replace(/:([a-zA-Z0-9_]{1,24}):/g, (all, n) => SHORTMAP[n.toLowerCase()] || all);
+    const big = isEmojiOnly(resolved);
 
     row.className = 'msg-row' + (mine ? ' mine' : '') + (state.suppressAnim ? ' no-anim' : '');
     row.dataset.id = m.id;
@@ -462,7 +463,7 @@
     const bodyHtml =
       '<div class="bubble' + (grouped ? '' : ' tail') + (big ? ' big' : '') + (fwd ? ' fwd' : '') + '">' +
         headerHtml +
-        '<div class="msg-text">' + (big ? esc(m.text) : renderText(m.text)) + '</div>' +
+        '<div class="msg-text">' + (big ? esc(resolved) : renderText(m.text)) + '</div>' +
         '<div class="msg-foot"><span class="msg-meta">' +
           (m.editedAt ? '<span class="edited">edited</span>' : '') + esc(fmtTime(m.ts)) +
         '</span></div>' +
