@@ -21,6 +21,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const zlib = require('zlib');
+const net = require('net');
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const HOST = process.env.HOST || '0.0.0.0';
@@ -113,16 +114,20 @@ function loadDb() {
   if (ann) { ann.name = 'YoriMethods'; ann.slug = 'yorimethods'; }
   const gen = db.rooms.find((r) => r.slug === 'general');
   if (gen) { gen.name = 'Yori Chat'; gen.slug = 'yori-chat'; }
+  for (const room of db.rooms) {
+    if (typeof room.description !== 'string') room.description = '';
+    if (typeof room.photoUrl !== 'string') room.photoUrl = '';
+  }
 
   // First boot: create the fixed channel + group.
   if (!db.rooms.length) {
     const channel = {
       id: db.seq++, slug: 'yorimethods', name: 'YoriMethods', type: 'channel',
-      createdBy: null, createdAt: now(), pinnedMsgId: null
+      createdBy: null, createdAt: now(), pinnedMsgId: null, description: '', photoUrl: ''
     };
     const group = {
       id: db.seq++, slug: 'yori-chat', name: 'Yori Chat', type: 'group',
-      createdBy: null, createdAt: now(), pinnedMsgId: null
+      createdBy: null, createdAt: now(), pinnedMsgId: null, description: '', photoUrl: ''
     };
     db.rooms.push(channel, group);
     db.messages.push(sysMsg(channel.id, 'Only admins can post here. Everyone can read and react.'));
@@ -149,6 +154,48 @@ function saveNow() {
 
 const findChannel = () => db.rooms.find((r) => r.type === 'channel') || null;
 const findGroup = () => db.rooms.find((r) => r.type === 'group') || null;
+
+function isSafeExternalUrl(value) {
+  if (typeof value !== 'string' || value.length > 2048) return false;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'https:' || !url.hostname || url.username || url.password) return false;
+    const host = url.hostname.toLowerCase();
+    const ipHost = host.startsWith('[') && host.endsWith(']') ? host.slice(1, -1) : host;
+    if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') || net.isIP(ipHost)) return false;
+    return true;
+  } catch (e) { return false; }
+}
+
+function isSafeImageUrl(value) {
+  if (!isSafeExternalUrl(value)) return false;
+  try {
+    const ext = new URL(value).pathname.split('.').pop().toLowerCase();
+    return ['jpg', 'jpeg', 'png', 'gif', 'webp', 'avif', 'bmp'].includes(ext);
+  } catch (e) { return false; }
+}
+
+function pubRoom(room) {
+  return {
+    id: room.id, slug: room.slug, name: room.name, type: room.type,
+    createdAt: room.createdAt, description: room.description || '', photoUrl: room.photoUrl || ''
+  };
+}
+
+function pubLastMessage(message) {
+  if (!message) return null;
+  return {
+    id: message.id, text: message.text, ts: message.ts, userId: message.userId,
+    username: message.username || null, system: !!message.system, fromChannel: !!message.fromChannel
+  };
+}
+
+function lastMessageInRoom(roomId) {
+  for (let i = db.messages.length - 1; i >= 0; i--) {
+    if (db.messages[i].roomId === roomId) return pubLastMessage(db.messages[i]);
+  }
+  return null;
+}
 
 /* ------------------------------------------------------------------ */
 /* Users & sessions                                                    */
@@ -281,6 +328,13 @@ function allowMessage(userId) {
 // Copies of a channel post living in the group.
 const copiesOf = (id) => db.messages.filter((m) => m.linkedTo === id);
 
+// Group forwards are only views of the channel post. Administrative actions on
+// a forward always resolve to its channel original so every copy stays in sync.
+function messageOrigin(m) {
+  if (m && m.linkedTo) return db.messages.find((x) => x.id === m.linkedTo) || m;
+  return m;
+}
+
 // Reacting on a group copy targets the channel original, so reactions stay shared.
 function reactionTarget(m) {
   if (m.linkedTo) {
@@ -373,10 +427,10 @@ async function api(req, res, url) {
       const unread = msgs.filter((x) => x.ts > readTs && x.userId !== user.id).length;
       const pinnedMsg = r.pinnedMsgId ? db.messages.find((x) => x.id === r.pinnedMsgId) : null;
       return {
-        id: r.id, slug: r.slug, name: r.name, type: r.type, createdAt: r.createdAt,
+        ...pubRoom(r),
         unread,
         pinned: pinnedMsg ? { id: pinnedMsg.id, text: pinnedMsg.text } : null,
-        lastMessage: last ? { text: last.text, ts: last.ts, userId: last.userId, username: last.username, system: !!last.system, fromChannel: !!last.fromChannel } : null
+        lastMessage: pubLastMessage(last)
       };
     });
     return send(res, 200, {
@@ -389,6 +443,40 @@ async function api(req, res, url) {
   }
 
   let match;
+
+  // Room identity is plain metadata: pictures are hosted elsewhere and only
+  // their HTTPS URLs are kept in this JSON database.
+  if (method === 'PATCH' && (match = p.match(/^\/api\/rooms\/(\d+)$/))) {
+    const room = db.rooms.find((r) => r.id === Number(match[1]));
+    if (!room) return sendErr(res, 404, 'Room not found');
+    if (room.type !== 'channel' && room.type !== 'group') return sendErr(res, 400, 'This room cannot be customized');
+    if (!user.isAdmin) return sendErr(res, 403, 'Only admins can change room details');
+    const body = await readJson(req, res); if (body === null) return;
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return sendErr(res, 400, 'Invalid room details');
+
+    if (body.name !== undefined) {
+      const name = String(body.name || '').trim();
+      if (!name || name.length > 48) return sendErr(res, 400, 'Room name must be 1-48 characters');
+      room.name = name;
+    }
+    if (body.description !== undefined) {
+      const description = String(body.description || '').trim();
+      if (description.length > 500) return sendErr(res, 400, 'Room description must be 500 characters or fewer');
+      room.description = description;
+    }
+    if (body.photoUrl !== undefined) {
+      const photoUrl = String(body.photoUrl || '').trim();
+      if (photoUrl && !isSafeImageUrl(photoUrl)) {
+        return sendErr(res, 400, 'Room picture must be a public HTTPS image link (JPG, PNG, GIF, WebP, or AVIF)');
+      }
+      room.photoUrl = photoUrl;
+    }
+
+    const published = pubRoom(room);
+    broadcast({ type: 'room', room: published });
+    scheduleSave();
+    return send(res, 200, { room: published });
+  }
 
   /* ---- messages ---- */
 
@@ -453,9 +541,14 @@ async function api(req, res, url) {
   }
 
   if (method === 'DELETE' && (match = p.match(/^\/api\/messages\/(\d+)$/))) {
-    const m = db.messages.find((x) => x.id === Number(match[1]));
-    if (!m) return sendErr(res, 404, 'Message not found');
-    if (m.userId !== user.id && !user.isAdmin) return sendErr(res, 403, 'You can only delete your own messages');
+    const requested = db.messages.find((x) => x.id === Number(match[1]));
+    if (!requested) return sendErr(res, 404, 'Message not found');
+    const m = messageOrigin(requested);
+    const sourceRoom = db.rooms.find((r) => r.id === m.roomId);
+    const isChannelPost = !!sourceRoom && sourceRoom.type === 'channel';
+    if (isChannelPost ? !user.isAdmin : (m.userId !== user.id && !user.isAdmin)) {
+      return sendErr(res, 403, isChannelPost ? 'Only channel admins can delete channel posts' : 'You can only delete your own messages');
+    }
 
     // Deleting a channel post removes its group copies too.
     const removed = [m].concat(copiesOf(m.id));
@@ -468,22 +561,31 @@ async function api(req, res, url) {
         broadcastPin(room);
       }
     }
-    for (const x of removed) broadcast({ type: 'delete', roomId: x.roomId, messageId: x.id });
+    const affectedRooms = new Set(removed.map((x) => x.roomId));
+    for (const x of removed) {
+      broadcast({ type: 'delete', roomId: x.roomId, messageId: x.id, lastMessage: lastMessageInRoom(x.roomId) });
+    }
+    for (const roomId of affectedRooms) broadcastPin(db.rooms.find((r) => r.id === roomId));
     scheduleSave();
     return send(res, 200, { ok: true });
   }
 
   if (method === 'PATCH' && (match = p.match(/^\/api\/messages\/(\d+)$/))) {
-    const m = db.messages.find((x) => x.id === Number(match[1]));
-    if (!m) return sendErr(res, 404, 'Message not found');
-    if (m.userId !== user.id) return sendErr(res, 403, 'You can only edit your own messages');
+    const requested = db.messages.find((x) => x.id === Number(match[1]));
+    if (!requested) return sendErr(res, 404, 'Message not found');
+    const m = messageOrigin(requested);
+    const sourceRoom = db.rooms.find((r) => r.id === m.roomId);
+    const isChannelPost = !!sourceRoom && sourceRoom.type === 'channel';
+    if (isChannelPost ? !user.isAdmin : m.userId !== user.id) {
+      return sendErr(res, 403, isChannelPost ? 'Only channel admins can edit channel posts' : 'You can only edit your own messages');
+    }
     const body = await readJson(req, res); if (body === null) return;
     const text = String(body.text || '').trim().slice(0, MSG_LIMIT);
     if (!text) return sendErr(res, 400, 'Message is empty');
     m.text = text;
     m.editedAt = now();
 
-    // Edits to a channel post propagate to its group copies.
+    // Edits to a channel post propagate to every group copy.
     const copies = copiesOf(m.id);
     for (const c of copies) {
       c.text = text;
@@ -491,6 +593,9 @@ async function api(req, res, url) {
       broadcast({ type: 'update', roomId: c.roomId, message: pubMsg(c) });
     }
     broadcast({ type: 'update', roomId: m.roomId, message: pubMsg(m) });
+    for (const room of db.rooms) {
+      if (room.pinnedMsgId === m.id || copies.some((copy) => room.pinnedMsgId === copy.id)) broadcastPin(room);
+    }
     scheduleSave();
     return send(res, 200, { message: pubMsg(m) });
   }
