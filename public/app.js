@@ -48,8 +48,28 @@
     return String(name || '?').slice(0, 1).toUpperCase();
   }
 
+  /* Emoji shortcodes — type :fire: or use the picker */
+  const SHORTCODES = [
+    ['fire', '🔥'], ['lit', '🔥'], ['heart', '❤️'], ['love', '❤️'], ['laugh', '😂'], ['lol', '😂'], ['joy', '😂'],
+    ['cry', '😢'], ['sob', '😭'], ['smile', '😄'], ['grin', '😁'], ['wink', '😉'], ['tongue', '😜'], ['cool', '😎'],
+    ['think', '🤔'], ['hmm', '🤔'], ['eyes', '👀'], ['look', '👀'], ['skull', '💀'], ['dead', '💀'], ['ghost', '👻'],
+    ['party', '🥳'], ['tada', '🎉'], ['star', '⭐'], ['stars', '✨'], ['sparkle', '✨'], ['clap', '👏'], ['pray', '🙏'],
+    ['up', '👍'], ['yes', '👍'], ['like', '👍'], ['down', '👎'], ['no', '👎'], ['ok', '👌'], ['muscle', '💪'],
+    ['100', '💯'], ['boom', '💥'], ['zap', '⚡'], ['rocket', '🚀'], ['moon', '🌙'], ['sun', '☀️'], ['cake', '🍰'],
+    ['coffee', '☕'], ['pizza', '🍕'], ['crown', '👑'], ['money', '💰'], ['gift', '🎁'], ['check', '✅'], ['done', '✅'],
+    ['x', '❌'], ['warn', '⚠️'], ['question', '❓'], ['omg', '😱'], ['scream', '😱'], ['shock', '😱'], ['facepalm', '🤦'],
+    ['shrug', '🤷'], ['sleep', '😴'], ['zzz', '😴'], ['angry', '😡'], ['mad', '😡'], ['hot', '🥵'], ['cold', '🥶'],
+    ['wave', '👋'], ['hi', '👋'], ['bye', '👋'], ['salute', '🫡'], ['shh', '🤫'], ['nerd', '🤓'], ['angel', '😇'],
+    ['clown', '🤡'], ['popcorn', '🍿'], ['trophy', '🏆'], ['music', '🎵'], ['game', '🎮'], ['dice', '🎲'], ['bell', '🔔'],
+    ['pin', '📌'], ['link', '🔗'], ['target', '🎯'], ['chart', '📈'], ['drool', '🤤'], ['kiss', '😘'], ['inlove', '😍']
+  ];
+  const SHORTMAP = Object.create(null);
+  for (const [n, e] of SHORTCODES) SHORTMAP[n] = e;
+  const PICKER_EMOJIS = [...new Set(SHORTCODES.map((s) => s[1]))];
+
   function renderText(text) {
     return esc(text)
+      .replace(/:([a-zA-Z0-9_]{1,24}):/g, (all, n) => SHORTMAP[n.toLowerCase()] || all)
       .replace(/(https?:\/\/[^\s<]+)/g, (url) => '<a href="' + url + '" target="_blank" rel="noopener noreferrer">' + url + '</a>')
       .replace(/\n/g, '<br>');
   }
@@ -92,6 +112,9 @@
     pencil: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>',
     trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>',
     copy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>',
+    link: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>',
+    channel: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10v4h3l5 4V6l-5 4H3z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.2 6a9 9 0 0 1 0 12"/></svg>',
+    group: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
     moon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>',
     sun: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>'
   };
@@ -114,6 +137,7 @@
     editing: null,
     typing: {},
     initialSlug: null,
+    pendingJump: null,
     suppressAnim: false
   };
 
@@ -125,8 +149,11 @@
   let toastTimer = null;
   let emojiPopFor = null;
   let ctxMenu = null;
+  let acState = null;      // shortcode autocomplete { items, sel }
+  let emojiGrid = null;    // composer picker element
 
   const activeRoom = () => state.rooms.find((r) => r.id === state.activeRoomId) || null;
+  const channelRoom = () => state.rooms.find((r) => r.type === 'channel') || null;
   const canPost = (room) => !!room && (room.type !== 'channel' || !!(state.me && state.me.isAdmin));
 
   /* ---------------------------------------------------------------- */
@@ -164,11 +191,11 @@
     if (!login) {
       api('/api/meta').then((m) => {
         $('#authNote').textContent = m.userCount === 0
-          ? 'You are the first user — this account becomes the admin.'
-          : 'Accounts need only a username and password.';
+          ? 'You are the first user — this account becomes the owner.'
+          : 'Usernames are 5-20 characters.';
       }).catch(() => {});
     } else {
-      $('#authNote').textContent = 'Accounts need only a username and password.';
+      $('#authNote').textContent = 'Usernames are 5-20 characters.';
     }
   }
 
@@ -226,8 +253,11 @@
     state.activeRoomId = id;
     state.editing = null;
     cancelEditUI();
+    closeAC();
+    closeEmojiGrid();
     renderSidebar();
     renderHeader();
+    renderPinBar();
     renderComposer();
     loadMessages(id);
     if (opts.history !== false) {
@@ -246,6 +276,11 @@
       state.hasMore = r.hasMore;
       renderMessages({ scroll: 'bottom' });
       markRead(true);
+      if (state.pendingJump) {
+        const jumpId = state.pendingJump;
+        state.pendingJump = null;
+        jumpToMessage(jumpId);
+      }
     } catch (e) {
       toast(e.message);
     }
@@ -255,11 +290,25 @@
   /* Sidebar                                                           */
   /* ---------------------------------------------------------------- */
 
+  function roomIconHtml(room, cls) {
+    if (room.type === 'channel') {
+      return '<div class="' + (cls || 'room-avatar') + '" style="background:var(--accent)">' + ICONS.channel + '</div>';
+    }
+    return '<div class="' + (cls || 'room-avatar') + '" style="background:' + colorFor(room.name) + '">' + ICONS.group + '</div>';
+  }
+
   function previewText(room, lm) {
     if (!lm) return 'No messages';
     if (lm.system) return lm.text;
-    const prefix = lm.userId === state.me.id ? 'You: '
-      : (room.type === 'group' && lm.username ? lm.username + ': ' : '');
+    let prefix = '';
+    if (lm.fromChannel) {
+      const ch = channelRoom();
+      prefix = (ch ? ch.name : 'Channel') + ': ';
+    } else if (lm.userId === state.me.id) {
+      prefix = 'You: ';
+    } else if (room.type === 'group' && lm.username) {
+      prefix = lm.username + ': ';
+    }
     let t = (prefix + String(lm.text)).replace(/\n/g, ' ');
     if (t.length > 44) t = t.slice(0, 44) + '…';
     return t;
@@ -267,14 +316,12 @@
 
   function renderSidebar() {
     const list = $('#roomList');
-    const q = ($('#searchInput').value || '').toLowerCase();
     list.innerHTML = '';
     for (const room of state.rooms) {
-      if (q && !room.name.toLowerCase().includes(q) && !room.slug.includes(q)) continue;
       const item = document.createElement('div');
       item.className = 'room-item' + (room.id === state.activeRoomId ? ' active' : '');
       item.innerHTML =
-        '<div class="room-avatar" style="background:' + colorFor(room.name) + '">' + esc(initials(room.name)) + '</div>' +
+        roomIconHtml(room) +
         '<div class="room-body">' +
           '<div class="room-top"><span class="room-name">' + esc(room.name) + '</span>' +
           '<span class="room-time">' + (room.lastMessage ? esc(shortTime(room.lastMessage.ts)) : '') + '</span></div>' +
@@ -298,18 +345,35 @@
   }
 
   /* ---------------------------------------------------------------- */
-  /* Header & composer                                                 */
+  /* Header, pin bar & composer                                        */
   /* ---------------------------------------------------------------- */
 
   function renderHeader() {
     const room = activeRoom();
     if (!room) return;
     const av = $('#headAvatar');
-    av.textContent = initials(room.name);
-    av.style.background = colorFor(room.name);
+    av.style.background = room.type === 'channel' ? 'var(--accent)' : colorFor(room.name);
+    av.innerHTML = room.type === 'channel' ? ICONS.channel : ICONS.group;
     $('#headName').innerHTML = esc(room.name) + '<span class="type-tag">' + (room.type === 'channel' ? 'channel' : 'group') + '</span>';
     const word = room.type === 'channel' ? 'subscriber' + (state.users.size === 1 ? '' : 's') : 'member' + (state.users.size === 1 ? '' : 's');
     $('#headSub').innerHTML = esc(state.users.size + ' ' + word) + ' · <span class="on">' + state.online.size + ' online</span>';
+  }
+
+  function renderPinBar() {
+    const room = activeRoom();
+    const bar = $('#pinBar');
+    if (!room || !room.pinned) { bar.classList.add('hidden'); return; }
+    let t = String(room.pinned.text || '');
+    $('#pinPreview').textContent = t.length > 90 ? t.slice(0, 90) + '…' : t;
+    bar.classList.remove('hidden');
+  }
+
+  function jumpToMessage(id) {
+    const el = $('#messages [data-id="' + id + '"]');
+    if (!el) return;
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    el.classList.add('flash');
+    setTimeout(() => el.classList.remove('flash'), 1700);
   }
 
   function renderComposer() {
@@ -367,9 +431,10 @@
       return row;
     }
 
-    const mine = m.userId === state.me.id;
+    const fwd = !!m.fromChannel;
+    const mine = m.userId === state.me.id && !fwd;
     const room = activeRoom();
-    const grouped = prev && !prev.system && prev.userId === m.userId && (m.ts - prev.ts) < 300000;
+    const grouped = prev && !prev.system && prev.userId === m.userId && !!prev.fromChannel === fwd && (m.ts - prev.ts) < 300000;
     const user = state.users.get(m.userId) || { username: m.username || 'user', isAdmin: false };
     const big = isEmojiOnly(m.text);
 
@@ -378,17 +443,25 @@
 
     let avatarHtml = '';
     if (!mine && !grouped) {
-      avatarHtml = '<div class="avatar" style="background:' + colorFor(user.username) + '">' + esc(initials(user.username)) + '</div>';
+      avatarHtml = fwd
+        ? '<div class="avatar" style="background:var(--accent)">' + ICONS.channel + '</div>'
+        : '<div class="avatar letters" style="background:' + colorFor(user.username) + '">' + esc(initials(user.username)) + '</div>';
     }
-    let nameHtml = '';
-    if (!mine && !grouped && room && room.type === 'group') {
-      nameHtml = '<div class="msg-name" style="color:' + colorFor(user.username) + '">' + esc(user.username) +
-        (user.isAdmin ? '<span class="admin-chip">admin</span>' : '') + '</div>';
+
+    let headerHtml = '';
+    if (!grouped) {
+      if (fwd) {
+        const ch = channelRoom();
+        headerHtml = '<div class="fwd-from">' + ICONS.channel + '<span>' + esc(ch ? ch.name : 'Channel') + '</span></div>';
+      } else if (!mine && room && room.type === 'group') {
+        headerHtml = '<div class="msg-name" style="color:' + colorFor(user.username) + '">' + esc(user.username) +
+          (user.isAdmin ? '<span class="admin-chip">admin</span>' : '') + '</div>';
+      }
     }
 
     const bodyHtml =
-      '<div class="bubble' + (grouped ? '' : ' tail') + (big ? ' big' : '') + '">' +
-        nameHtml +
+      '<div class="bubble' + (grouped ? '' : ' tail') + (big ? ' big' : '') + (fwd ? ' fwd' : '') + '">' +
+        headerHtml +
         '<div class="msg-text">' + (big ? esc(m.text) : renderText(m.text)) + '</div>' +
         '<div class="msg-foot"><span class="msg-meta">' +
           (m.editedAt ? '<span class="edited">edited</span>' : '') + esc(fmtTime(m.ts)) +
@@ -508,6 +581,7 @@
   function cancelEdit() {
     state.editing = null;
     cancelEditUI();
+    closeAC();
   }
 
   async function sendCurrent() {
@@ -516,6 +590,7 @@
     if (!room || !ta) return;
     const text = ta.value.trim();
     if (!text) return;
+    closeAC();
 
     if (state.editing) {
       const m = state.editing;
@@ -531,11 +606,116 @@
     try {
       const r = await api('/api/rooms/' + room.id + '/messages', { method: 'POST', body: { text } });
       handleEvent({ type: 'message', roomId: room.id, message: r.message });
+      // Channel posts auto-forward into the group; the pin event arrives over SSE.
     } catch (e) {
       toast(e.message);
       ta.value = text;
       autoSize();
     }
+  }
+
+  function insertAtCaret(text) {
+    const ta = $('#input');
+    if (!ta) return;
+    const s = ta.selectionStart != null ? ta.selectionStart : ta.value.length;
+    const e = ta.selectionEnd != null ? ta.selectionEnd : ta.value.length;
+    ta.value = ta.value.slice(0, s) + text + ta.value.slice(e);
+    const np = s + text.length;
+    ta.setSelectionRange(np, np);
+    ta.focus();
+    autoSize();
+  }
+
+  /* ---------------- emoji picker ---------------- */
+
+  function closeEmojiGrid() {
+    if (emojiGrid) { emojiGrid.remove(); emojiGrid = null; }
+  }
+
+  function toggleEmojiGrid() {
+    if (emojiGrid) { closeEmojiGrid(); return; }
+    const grid = document.createElement('div');
+    grid.className = 'emoji-grid';
+    for (const e of PICKER_EMOJIS) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'eg-item';
+      b.textContent = e;
+      b.title = ':' + (SHORTCODES.find((s) => s[1] === e) || ['', ''])[0] + ':';
+      b.addEventListener('click', () => { insertAtCaret(e); });
+      grid.appendChild(b);
+    }
+    $('.composer').appendChild(grid);
+    emojiGrid = grid;
+  }
+
+  /* ---------------- shortcode autocomplete ---------------- */
+
+  function closeAC() {
+    acState = null;
+    const el = $('.ac-popup');
+    if (el) el.remove();
+  }
+
+  function renderAC() {
+    if (!acState) return;
+    const el = $('.ac-popup');
+    if (!el) return;
+    $$('.ac-item', el).forEach((it, i) => it.classList.toggle('sel', i === acState.sel));
+  }
+
+  function openAC(items) {
+    closeAC();
+    acState = { items, sel: 0 };
+    const pop = document.createElement('div');
+    pop.className = 'ac-popup';
+    items.forEach(([name, emoji], i) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'ac-item' + (i === 0 ? ' sel' : '');
+      b.innerHTML = '<span class="e">' + emoji + '</span><span class="n">:' + esc(name) + ':</span><span class="k">Tab</span>';
+      b.addEventListener('mouseenter', () => { acState.sel = i; renderAC(); });
+      b.addEventListener('mousedown', (e) => e.preventDefault()); // keep textarea focus
+      b.addEventListener('click', () => insertAC(name, emoji));
+      pop.appendChild(b);
+    });
+    $('#acAnchor').appendChild(pop);
+  }
+
+  function updateAC() {
+    const ta = $('#input');
+    const pos = ta.selectionStart != null ? ta.selectionStart : ta.value.length;
+    const before = ta.value.slice(0, pos);
+    const lastColon = before.lastIndexOf(':');
+    if (lastColon === -1) return closeAC();
+    const partial = before.slice(lastColon + 1);
+    if (!/^[a-zA-Z0-9_]{1,24}$/.test(partial)) return closeAC();
+    if (lastColon > 0 && !/\s/.test(before[lastColon - 1])) return closeAC();
+
+    const q = partial.toLowerCase();
+    const starts = SHORTCODES.filter((s) => s[0].startsWith(q));
+    const contains = SHORTCODES.filter((s) => !s[0].startsWith(q) && s[0].includes(q));
+    const items = starts.concat(contains).slice(0, 8);
+    if (!items.length) return closeAC();
+    if (acState && acState.items === items) return;
+    openAC(items);
+  }
+
+  function insertAC(name, emoji) {
+    const ta = $('#input');
+    const pos = ta.selectionStart != null ? ta.selectionStart : ta.value.length;
+    const before = ta.value.slice(0, pos);
+    const after = ta.value.slice(pos);
+    const lastColon = before.lastIndexOf(':');
+    if (lastColon === -1) { closeAC(); return; }
+    let suffix = ' ';
+    if (after.startsWith(' ')) suffix = '';
+    ta.value = before.slice(0, lastColon) + emoji + suffix + after;
+    const np = lastColon + emoji.length + suffix.length;
+    ta.setSelectionRange(np, np);
+    closeAC();
+    ta.focus();
+    autoSize();
   }
 
   /* ---------------------------------------------------------------- */
@@ -560,6 +740,7 @@
     try {
       await loadBootstrap();
       renderHeader();
+      renderPinBar();
       if (state.activeRoomId != null) {
         const r = await api('/api/rooms/' + state.activeRoomId + '/messages');
         if (state.activeRoomId != null) {
@@ -616,7 +797,10 @@
         const msg = ev.message;
         const room = state.rooms.find((r) => r.id === ev.roomId);
         if (room) {
-          room.lastMessage = { text: msg.text, ts: msg.ts, userId: msg.userId, username: msg.username, system: !!msg.system };
+          room.lastMessage = {
+            text: msg.text, ts: msg.ts, userId: msg.userId, username: msg.username,
+            system: !!msg.system, fromChannel: !!msg.fromChannel
+          };
         }
         if (state.typing[ev.roomId] && state.typing[ev.roomId][msg.userId]) {
           delete state.typing[ev.roomId][msg.userId];
@@ -641,6 +825,13 @@
         break;
       }
 
+      case 'pin': {
+        const room = state.rooms.find((r) => r.id === ev.roomId);
+        if (room) room.pinned = ev.pinned;
+        renderPinBar();
+        break;
+      }
+
       case 'delete': {
         const idx = state.messages.findIndex((m) => m.id === ev.messageId);
         if (idx > -1) state.messages.splice(idx, 1);
@@ -649,7 +840,10 @@
         const room = state.rooms.find((r) => r.id === ev.roomId);
         if (room && ev.roomId === state.activeRoomId && state.messages.length) {
           const last = state.messages[state.messages.length - 1];
-          room.lastMessage = { text: last.text, ts: last.ts, userId: last.userId, username: last.username, system: !!last.system };
+          room.lastMessage = {
+            text: last.text, ts: last.ts, userId: last.userId, username: last.username,
+            system: !!last.system, fromChannel: !!last.fromChannel
+          };
         }
         renderSidebar();
         break;
@@ -670,37 +864,6 @@
         setTyping(ev.roomId, ev.userId, ev.username);
         break;
 
-      case 'room': {
-        if (!state.rooms.some((r) => r.id === ev.room.id)) {
-          state.rooms.push(Object.assign({ unread: 0, lastMessage: null }, ev.room));
-          if (ev.message) {
-            const r = state.rooms[state.rooms.length - 1];
-            r.lastMessage = { text: ev.message.text, ts: ev.message.ts, userId: ev.message.userId, username: ev.message.username, system: !!ev.message.system };
-            if (ev.room.id === state.activeRoomId) { state.messages.push(ev.message); appendMessageDom(ev.message); }
-          }
-          renderSidebar();
-        }
-        break;
-      }
-
-      case 'room-update': {
-        const r = state.rooms.find((x) => x.id === ev.room.id);
-        if (r) { r.name = ev.room.name; r.type = ev.room.type; }
-        renderSidebar();
-        if (state.activeRoomId === ev.room.id) { renderHeader(); renderComposer(); }
-        break;
-      }
-
-      case 'room-deleted': {
-        state.rooms = state.rooms.filter((r) => r.id !== ev.roomId);
-        if (state.activeRoomId === ev.roomId && state.rooms.length) {
-          openRoom(state.rooms[0].id, { history: 'replace' });
-        }
-        renderSidebar();
-        toast('Chat deleted');
-        break;
-      }
-
       case 'user': {
         state.users.set(ev.user.id, ev.user);
         if (ev.user.id === state.me.id) {
@@ -719,7 +882,7 @@
   }
 
   /* ---------------------------------------------------------------- */
-  /* Reactions                                                         */
+  /* Reactions — one per user per post                                 */
   /* ---------------------------------------------------------------- */
 
   function closeEmojiPop() {
@@ -752,10 +915,13 @@
 
   async function toggleReact(m, emoji) {
     if (!m.reactions) m.reactions = {};
-    const arr = m.reactions[emoji] || (m.reactions[emoji] = []);
-    const i = arr.indexOf(state.me.id);
-    if (i >= 0) arr.splice(i, 1); else arr.push(state.me.id);
-    if (!arr.length) delete m.reactions[emoji];
+    const had = (m.reactions[emoji] || []).includes(state.me.id);
+    // one reaction per user: pull out of every emoji first, then set the new one
+    for (const e of Object.keys(m.reactions)) {
+      m.reactions[e] = m.reactions[e].filter((id) => id !== state.me.id);
+      if (!m.reactions[e].length) delete m.reactions[e];
+    }
+    if (!had) m.reactions[emoji] = (m.reactions[emoji] || []).concat(state.me.id);
     refreshMessage(m);
     try {
       const r = await api('/api/messages/' + m.id + '/react', { method: 'POST', body: { emoji } });
@@ -772,6 +938,11 @@
     if (ctxMenu) { ctxMenu.remove(); ctxMenu = null; }
   }
 
+  function messageLink(m) {
+    const room = state.rooms.find((r) => r.id === m.roomId) || activeRoom();
+    return location.origin + '/r/' + (room ? room.slug : '') + '?m=' + m.id;
+  }
+
   function openCtxMenu(x, y, m) {
     closeCtxMenu();
     const menu = document.createElement('div');
@@ -779,6 +950,7 @@
     const mine = m.userId === state.me.id;
     const items = [
       { id: 'copy', label: 'Copy text', icon: ICONS.copy },
+      { id: 'link', label: 'Copy link', icon: ICONS.link },
       { id: 'react', label: 'React', icon: ICONS.smile },
       mine && { id: 'edit', label: 'Edit', icon: ICONS.pencil },
       (mine || state.me.isAdmin) && { id: 'del', label: 'Delete', icon: ICONS.trash, danger: true }
@@ -792,6 +964,7 @@
         e.stopPropagation();
         closeCtxMenu();
         if (it.id === 'copy') copyText(m.text).then(() => toast('Copied')).catch(() => {});
+        else if (it.id === 'link') copyText(messageLink(m)).then(() => toast('Link copied')).catch(() => {});
         else if (it.id === 'react') openEmojiPop($('#messages [data-id="' + m.id + '"]'));
         else if (it.id === 'edit') startEdit(m);
         else if (it.id === 'del') {
@@ -870,21 +1043,13 @@
       '</div>'
     ).join('');
 
-    let adminHtml = '';
-    if (state.me.isAdmin) {
-      adminHtml =
-        '<section><h3>Manage</h3>' +
-          '<div class="form-row"><input id="renameInput" maxlength="40" value="' + esc(room.name) + '" placeholder="Chat name">' +
-          '<button class="btn ghost" id="renameBtn">Rename</button></div>' +
-          '<div class="modal-actions"><button class="btn danger" id="delRoomBtn">Delete chat</button></div>' +
-        '</section>';
-    }
-
     const ov = openModal(
       '<h2>Chat info</h2>' +
-      '<p class="sub">' + (room.type === 'channel' ? 'Channel — only admins can post.' : 'Group — everyone can post.') + '</p>' +
+      '<p class="sub">' + (room.type === 'channel' ? 'Channel — only admins can post, everyone can react.' : 'Group — everyone can post. Channel posts arrive here automatically.') + '</p>' +
       '<div class="user-row" style="padding-left:0">' +
-        '<div class="uavatar" style="width:48px;height:48px;font-size:18px;background:' + colorFor(room.name) + '">' + esc(initials(room.name)) + '</div>' +
+        '<div class="uavatar big" style="background:' + (room.type === 'channel' ? 'var(--accent)' : colorFor(room.name)) + '">' +
+          (room.type === 'channel' ? ICONS.channel : ICONS.group) +
+        '</div>' +
         '<div><div class="uname" style="font-size:16px">' + esc(room.name) + '</div>' +
         '<span class="room-tag">' + room.type + '</span></div>' +
       '</div>' +
@@ -893,93 +1058,41 @@
         '<button class="btn ghost" id="copyLinkBtn">' + ICONS.copy + 'Copy</button></div>' +
         '<p class="sub" style="margin:8px 0 0">Anyone with this link can join after signing in.</p>' +
       '</section>' +
-      '<section><h3>Members (' + users.length + ')</h3><div style="max-height:210px;overflow-y:auto">' + membersHtml + '</div></section>' +
-      adminHtml
+      '<section><h3>Members (' + users.length + ')</h3><div style="max-height:210px;overflow-y:auto">' + membersHtml + '</div></section>'
     );
 
     ov.querySelector('#copyLinkBtn').addEventListener('click', () => {
       copyText(link).then(() => toast('Link copied')).catch(() => toast(link));
     });
-
-    const renameBtn = ov.querySelector('#renameBtn');
-    if (renameBtn) {
-      renameBtn.addEventListener('click', async () => {
-        const name = ov.querySelector('#renameInput').value.trim();
-        if (!name) return;
-        try {
-          await api('/api/rooms/' + room.id, { method: 'PATCH', body: { name } });
-          closeModal();
-          toast('Chat renamed');
-        } catch (e) { toast(e.message); }
-      });
-    }
-
-    const delBtn = ov.querySelector('#delRoomBtn');
-    if (delBtn) {
-      delBtn.addEventListener('click', () => {
-        openConfirm('Delete ' + room.name + '?', 'All messages in this chat will be removed.', 'Delete chat', true, async () => {
-          try {
-            await api('/api/rooms/' + room.id, { method: 'DELETE' });
-            closeModal();
-          } catch (e) { toast(e.message); }
-        });
-      });
-    }
   }
 
   function openAdminPanel() {
+    const isOwner = !!state.me.isOwner;
     const users = Array.from(state.users.values()).sort((a, b) => a.username.localeCompare(b.username));
-    const roomsHtml = state.rooms.map((r) =>
-      '<div class="room-row">' +
-        '<div class="uavatar" style="background:' + colorFor(r.name) + '">' + esc(initials(r.name)) + '</div>' +
-        '<div class="uname">' + esc(r.name) + '</div>' +
-        '<span class="room-tag">' + r.type + '</span>' +
-      '</div>'
-    ).join('');
 
     const usersHtml = users.map((u) => {
       const isMe = u.id === state.me.id;
-      const btn = u.isOwner ? '<span class="utag adm">owner</span>'
-        : '<button class="btn small ' + (u.isAdmin ? 'ghost' : 'primary') + '" data-uid="' + u.id + '" data-val="' + (u.isAdmin ? 'false' : 'true') + '">' +
+      let right;
+      if (u.isOwner) right = '<span class="utag adm">owner</span>';
+      else if (!isOwner) right = '<span class="utag">' + (u.isAdmin ? 'admin' : '') + '</span>';
+      else right = '<button class="btn small ' + (u.isAdmin ? 'ghost' : 'primary') + '" data-uid="' + u.id + '" data-val="' + (u.isAdmin ? 'false' : 'true') + '">' +
             (u.isAdmin ? 'Demote' : 'Make admin') + '</button>';
       return '<div class="user-row">' +
         '<div class="uavatar" style="background:' + colorFor(u.username) + '">' + esc(initials(u.username)) + '</div>' +
         '<div class="uname">' + esc(u.username) + (isMe ? ' <span class="utag">(you)</span>' : '') + '</div>' +
-        btn + '</div>';
+        right + '</div>';
     }).join('');
 
     const ov = openModal(
       '<h2>Admin</h2>' +
-      '<p class="sub">The first account registered is the owner and can\'t be demoted.</p>' +
-      '<section><h3>New chat</h3>' +
-        '<div class="form-row">' +
-          '<input id="newRoomName" maxlength="40" placeholder="Name">' +
-          '<select id="newRoomType"><option value="channel">Channel</option><option value="group">Group</option></select>' +
-          '<button class="btn primary" id="createRoomBtn">Create</button>' +
-        '</div>' +
-        '<p class="sub" style="margin:8px 0 0">Channels: only admins post. Groups: everyone posts.</p>' +
-      '</section>' +
-      '<section><h3>Chats</h3>' + roomsHtml + '</section>' +
-      '<section><h3>Members (' + users.length + ')</h3><div style="max-height:220px;overflow-y:auto">' + usersHtml + '</div></section>' +
+      '<p class="sub">' + (isOwner
+        ? 'Admins can post in the channel. Only you can add or remove them.'
+        : 'Only the owner can manage admins.') + '</p>' +
+      '<section><h3>Members (' + users.length + ')</h3><div style="max-height:260px;overflow-y:auto">' + usersHtml + '</div></section>' +
       '<section><h3>Data</h3>' +
         '<a class="btn ghost" href="/api/admin/export" download>Download backup (JSON)</a>' +
       '</section>'
     );
-
-    ov.querySelector('#createRoomBtn').addEventListener('click', async () => {
-      const name = ov.querySelector('#newRoomName').value.trim();
-      const type = ov.querySelector('#newRoomType').value;
-      if (!name) { toast('Enter a name'); return; }
-      try {
-        const r = await api('/api/rooms', { method: 'POST', body: { name, type } });
-        closeModal();
-        toast('Chat created');
-        setTimeout(() => {
-          const room = state.rooms.find((x) => x.id === r.room.id);
-          if (room) openRoom(room.id);
-        }, 150);
-      } catch (e) { toast(e.message); }
-    });
 
     $$('[data-uid]', ov).forEach((btn) => {
       btn.addEventListener('click', async () => {
@@ -1028,7 +1141,6 @@
   }
 
   function bindApp() {
-    $('#searchInput').addEventListener('input', renderSidebar);
     $('#menuBtn').addEventListener('click', openSidebar);
     $('#backdrop').addEventListener('click', closeSidebar);
     $('#themeBtn').addEventListener('click', () => {
@@ -1048,9 +1160,15 @@
       copyText(link).then(() => toast('Link copied')).catch(() => toast(link));
     });
 
+    $('#pinBar').addEventListener('click', () => {
+      const room = activeRoom();
+      if (room && room.pinned) jumpToMessage(room.pinned.id);
+    });
+
     const ta = $('#input');
     ta.addEventListener('input', () => {
       autoSize();
+      updateAC();
       const room = activeRoom();
       if (room && Date.now() - lastTypingSent > 2000) {
         lastTypingSent = Date.now();
@@ -1058,11 +1176,18 @@
       }
     });
     ta.addEventListener('keydown', (e) => {
+      if (acState) {
+        if (e.key === 'ArrowDown') { e.preventDefault(); acState.sel = (acState.sel + 1) % acState.items.length; renderAC(); return; }
+        if (e.key === 'ArrowUp') { e.preventDefault(); acState.sel = (acState.sel - 1 + acState.items.length) % acState.items.length; renderAC(); return; }
+        if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); const it = acState.items[acState.sel]; insertAC(it[0], it[1]); return; }
+        if (e.key === 'Escape') { closeAC(); return; }
+      }
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendCurrent(); }
       if (e.key === 'Escape') cancelEdit();
     });
     $('#sendBtn').addEventListener('click', sendCurrent);
     $('#cancelEdit').addEventListener('click', cancelEdit);
+    $('#emojiBtn').addEventListener('click', toggleEmojiGrid);
 
     const list = $('#messages');
     list.addEventListener('scroll', () => {
@@ -1142,9 +1267,10 @@
     document.addEventListener('click', (e) => {
       if (ctxMenu && !e.target.closest('.ctx-menu')) closeCtxMenu();
       if (!e.target.closest('.emoji-pop') && !e.target.closest('.react-btn')) closeEmojiPop();
+      if (emojiGrid && !e.target.closest('.emoji-grid') && !e.target.closest('#emojiBtn')) closeEmojiGrid();
     });
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') { closeModal(); closeCtxMenu(); }
+      if (e.key === 'Escape') { closeModal(); closeCtxMenu(); closeEmojiGrid(); }
     });
     window.addEventListener('scroll', closeCtxMenu, true);
 
@@ -1189,6 +1315,8 @@
 
     const m = location.pathname.match(/^\/r\/([a-z0-9-]+)/i);
     if (m) state.initialSlug = m[1].toLowerCase();
+    const jump = new URLSearchParams(location.search).get('m');
+    if (jump && /^\d+$/.test(jump)) state.pendingJump = Number(jump);
 
     try {
       const r = await api('/api/me');

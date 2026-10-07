@@ -1,6 +1,6 @@
 # yori
 
-A small self-hosted forum that works like Telegram. One channel where only admins post, one group where everyone talks. People sign up with just a username and password — no email, no phone number, no accounts on anyone else's platform.
+A small self-hosted forum that works like Telegram. Two chats, fixed: **YoriMethods** (channel) and **Yori Chat** (group). People sign up with just a username and password — no email, no phone number.
 
 Runs on plain Node.js with zero dependencies. No database server, no build step. Data lives in a single JSON file.
 
@@ -10,19 +10,42 @@ Runs on plain Node.js with zero dependencies. No database server, no build step.
 node server.js
 ```
 
-That's it. Open `http://localhost:3000`.
+Open `http://localhost:3000`.
 
 **The first account you register becomes the owner.** Register yourself before sharing the link with anyone.
 
 ## How it works
 
-- **Channel** — only admins can post. Everyone else reads and reacts. Like a Telegram channel.
-- **Group** — everyone posts. Like a Telegram group.
-- Invite links look like `https://your-domain.com/r/announcements` — same idea as a `t.me/` link. Anyone who signs in through the link lands directly in that chat.
-- New messages, reactions, typing and online status arrive live (SSE, with polling fallback).
-- Admins manage everything from the panel: promote/demote admins, create, rename and delete chats, download a backup.
+**Structure (fixed — there is exactly one channel and one group):**
 
-Two chats are created on first start: `Announcements` (channel) and `General` (group). Rename or delete them from the admin panel.
+- **YoriMethods** — channel. Only the owner and admins can post. Everyone else reads and reacts.
+- **Yori Chat** — group. Everyone posts. Every new channel post is auto-forwarded here and pinned at the top; the previous pinned post becomes a normal message (nothing is deleted).
+
+**Reactions:**
+
+- Everyone can react, in the channel or on the forwarded copy in the group — counts are shared and identical in both places.
+- One reaction per user per post. Picking a different emoji moves your reaction.
+
+**Admins:**
+
+- Admins can post in the channel.
+- Only the owner can add or remove admins. The owner is the first registered account and cannot be demoted.
+
+**Usernames:**
+
+- 5–20 characters, letters, numbers, underscore.
+- The name `Yori` (any capitalization — yori/Yori/YORI are the same) is reserved for the first account. Case-insensitive everywhere.
+
+**Messages:**
+
+- Emoji shortcodes: type `:fire:` `:omg:` `:100:` `:tada:` etc. — an autocomplete pops up while typing, or use the emoji button next to the input. Around 80 shortcodes available.
+- Links are clickable. Emoji-only messages render big.
+- Right-click a message for copy text / copy link / react / edit / delete. Double-click to ❤️.
+- Every message has a shareable link (`/r/yorimethods?m=123`) — copying it from the right-click menu and opening it jumps straight to that message.
+
+**Live:** new messages, reactions, pins, typing indicators and online status arrive instantly (SSE, with polling fallback).
+
+**Admin panel:** members list, add/remove admins (owner only), download a JSON backup.
 
 ## Configuration
 
@@ -41,7 +64,7 @@ Works on the free plan — one slot is plenty.
 2. In Botkeep, create a **Node.js** workload.
 3. Import the repo (GitHub) or upload the ZIP.
 4. Start command: `node server.js` (or `npm start`).
-5. Suggested resources: 256 MB RAM, 10% CPU, 256 MB storage. That comfortably runs a small community.
+5. Suggested resources: 256 MB RAM, 10% CPU, 256 MB storage.
 6. Start the server. Register your account first — it becomes the owner.
 
 Health check path if you want one: `/healthz`.

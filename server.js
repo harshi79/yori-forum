@@ -2,11 +2,15 @@
 'use strict';
 /*
  * yori — a small self-hosted forum that works like Telegram.
- *   • "channel" rooms: only admins post, everyone reads
- *   • "group" rooms: everyone chats
- *   • Username + password auth (no email, no phone)
- *   • Live updates over Server-Sent Events (SSE)
- *   • Zero npm dependencies — plain Node.js, JSON file storage
+ *   • Fixed structure: one channel (YoriMethods) + one group (Yori Chat)
+ *   • Channel: only the owner and admins can post; everyone can react
+ *   • Channel posts auto-forward to the group and get pinned there
+ *   • Reactions are shared between the channel post and its group copy
+ *   • One reaction per user per post (switching emojis moves it)
+ *   • Only the owner can promote/demote admins
+ *   • Username "Yori" is reserved for the first account (case-insensitive);
+ *     everyone else needs 5-20 characters
+ *   • Live updates over SSE, zero npm dependencies, JSON file storage
  *
  * Run:  node server.js   (or: npm start)
  * Data: ./data/db.json (created automatically, git-ignored)
@@ -25,7 +29,8 @@ const DATA_DIR = path.join(__dirname, 'data');
 const DB_FILE = path.join(DATA_DIR, 'db.json');
 
 const REACTIONS = ['👍', '❤️', '😂', '🔥', '😮', '😢', '🙏'];
-const USERNAME_RE = /^[a-zA-Z0-9_]{3,20}$/;
+const USERNAME_RE = /^[a-zA-Z0-9_]{5,20}$/;   // everyone except the reserved name
+const RESERVED_NAME = 'yori';                  // only the first account may take it
 const MSG_LIMIT = 4000;
 const PAGE_SIZE = 50;
 
@@ -86,29 +91,6 @@ function cookieHeader(token) {
 let db = { users: [], rooms: [], messages: [], sessions: {}, reads: {}, seq: 1 };
 let saveTimer = null;
 
-function slugify(name) {
-  const s = String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-  return s || 'room';
-}
-
-function uniqueSlug(base) {
-  let slug = slugify(base);
-  let n = 2;
-  while (db.rooms.some((r) => r.slug === slug)) slug = slugify(base) + '-' + (n++);
-  return slug;
-}
-
-function makeRoom(name, type, slug, userId) {
-  return {
-    id: db.seq++,
-    slug: slug || uniqueSlug(name),
-    name,
-    type, // 'channel' | 'group'
-    createdBy: userId || null,
-    createdAt: now()
-  };
-}
-
 function sysMsg(roomId, text) {
   return { id: db.seq++, roomId, userId: 0, username: null, text, ts: now(), system: true, reactions: {} };
 }
@@ -126,13 +108,25 @@ function loadDb() {
   for (const m of db.messages) maxId = Math.max(maxId, m.id);
   db.seq = Math.max(db.seq, maxId + 1);
 
-  // First boot: create the default channel + group.
+  // Migrate old default rooms to the new fixed names.
+  const ann = db.rooms.find((r) => r.slug === 'announcements');
+  if (ann) { ann.name = 'YoriMethods'; ann.slug = 'yorimethods'; }
+  const gen = db.rooms.find((r) => r.slug === 'general');
+  if (gen) { gen.name = 'Yori Chat'; gen.slug = 'yori-chat'; }
+
+  // First boot: create the fixed channel + group.
   if (!db.rooms.length) {
-    const channel = makeRoom('Announcements', 'channel', 'announcements', null);
-    const group = makeRoom('General', 'group', 'general', null);
+    const channel = {
+      id: db.seq++, slug: 'yorimethods', name: 'YoriMethods', type: 'channel',
+      createdBy: null, createdAt: now(), pinnedMsgId: null
+    };
+    const group = {
+      id: db.seq++, slug: 'yori-chat', name: 'Yori Chat', type: 'group',
+      createdBy: null, createdAt: now(), pinnedMsgId: null
+    };
     db.rooms.push(channel, group);
-    db.messages.push(sysMsg(channel.id, 'Only admins can post here. Everyone else can read and react.'));
-    db.messages.push(sysMsg(group.id, 'Everyone can post here.'));
+    db.messages.push(sysMsg(channel.id, 'Only admins can post here. Everyone can read and react.'));
+    db.messages.push(sysMsg(group.id, 'Everyone can post here. Channel posts arrive here automatically and stay pinned at the top.'));
     saveNow();
   }
 }
@@ -153,6 +147,9 @@ function saveNow() {
   }
 }
 
+const findChannel = () => db.rooms.find((r) => r.type === 'channel') || null;
+const findGroup = () => db.rooms.find((r) => r.type === 'group') || null;
+
 /* ------------------------------------------------------------------ */
 /* Users & sessions                                                    */
 /* ------------------------------------------------------------------ */
@@ -165,7 +162,7 @@ function makeUser(username, password) {
     id: db.seq++,
     username,
     pass: { salt, hash },
-    isAdmin: isFirst,   // first account = admin
+    isAdmin: isFirst,   // first account = owner
     isOwner: isFirst,   // first account = owner (cannot be demoted)
     joined: now()
   };
@@ -199,7 +196,8 @@ function getSessionUser(req) {
 function pubMsg(m) {
   const out = {
     id: m.id, roomId: m.roomId, userId: m.userId, username: m.username || null,
-    text: m.text, ts: m.ts, system: !!m.system, reactions: m.reactions || {}
+    text: m.text, ts: m.ts, system: !!m.system, reactions: m.reactions || {},
+    fromChannel: !!m.fromChannel, linkedTo: m.linkedTo || null
   };
   if (m.editedAt) out.editedAt = m.editedAt;
   return out;
@@ -222,6 +220,15 @@ function broadcast(ev) {
   for (const c of clients) {
     try { c.res.write(line); } catch (e) { /* dropped */ }
   }
+}
+
+function broadcastPin(room) {
+  if (!room || !room.pinnedMsgId) {
+    if (room) broadcast({ type: 'pin', roomId: room.id, pinned: null });
+    return;
+  }
+  const m = db.messages.find((x) => x.id === room.pinnedMsgId);
+  broadcast({ type: 'pin', roomId: room.id, pinned: m ? { id: m.id, text: m.text } : null });
 }
 
 function sseHandler(req, res) {
@@ -268,6 +275,22 @@ function allowMessage(userId) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Message helpers                                                     */
+/* ------------------------------------------------------------------ */
+
+// Copies of a channel post living in the group.
+const copiesOf = (id) => db.messages.filter((m) => m.linkedTo === id);
+
+// Reacting on a group copy targets the channel original, so reactions stay shared.
+function reactionTarget(m) {
+  if (m.linkedTo) {
+    const orig = db.messages.find((x) => x.id === m.linkedTo);
+    if (orig) return orig;
+  }
+  return m;
+}
+
+/* ------------------------------------------------------------------ */
 /* API                                                                 */
 /* ------------------------------------------------------------------ */
 
@@ -287,7 +310,11 @@ async function api(req, res, url) {
     const body = await readJson(req, res); if (body === null) return;
     const username = String(body.username || '').trim();
     const password = String(body.password || '');
-    if (!USERNAME_RE.test(username)) return sendErr(res, 400, 'Username must be 3-20 characters (letters, numbers, underscore)');
+    if (username.toLowerCase() === RESERVED_NAME) {
+      if (db.users.length > 0) return sendErr(res, 403, 'That name is reserved');
+    } else if (!USERNAME_RE.test(username)) {
+      return sendErr(res, 400, 'Username must be 5-20 characters (letters, numbers, underscore)');
+    }
     if (password.length < 4) return sendErr(res, 400, 'Password must be at least 4 characters');
     if (db.users.some((u) => u.username.toLowerCase() === username.toLowerCase())) {
       return sendErr(res, 409, 'That username is already taken');
@@ -295,12 +322,12 @@ async function api(req, res, url) {
     const user = makeUser(username, password);
     db.users.push(user);
 
-    // A join notice in the general group.
-    const general = db.rooms.find((r) => r.slug === 'general') || db.rooms.find((r) => r.type === 'group');
-    if (general) {
-      const m = sysMsg(general.id, user.username + ' joined');
+    // A join notice in the group.
+    const group = findGroup();
+    if (group) {
+      const m = sysMsg(group.id, user.username + ' joined');
       db.messages.push(m);
-      broadcast({ type: 'message', roomId: general.id, message: pubMsg(m) });
+      broadcast({ type: 'message', roomId: group.id, message: pubMsg(m) });
     }
 
     const token = createSession(user.id);
@@ -344,10 +371,12 @@ async function api(req, res, url) {
       const last = msgs[msgs.length - 1];
       const readTs = (db.reads[user.id] || {})[r.id] || 0;
       const unread = msgs.filter((x) => x.ts > readTs && x.userId !== user.id).length;
+      const pinnedMsg = r.pinnedMsgId ? db.messages.find((x) => x.id === r.pinnedMsgId) : null;
       return {
         id: r.id, slug: r.slug, name: r.name, type: r.type, createdAt: r.createdAt,
         unread,
-        lastMessage: last ? { text: last.text, ts: last.ts, userId: last.userId, username: last.username, system: !!last.system } : null
+        pinned: pinnedMsg ? { id: pinnedMsg.id, text: pinnedMsg.text } : null,
+        lastMessage: last ? { text: last.text, ts: last.ts, userId: last.userId, username: last.username, system: !!last.system, fromChannel: !!last.fromChannel } : null
       };
     });
     return send(res, 200, {
@@ -384,9 +413,26 @@ async function api(req, res, url) {
     const body = await readJson(req, res); if (body === null) return;
     const text = String(body.text || '').trim().slice(0, MSG_LIMIT);
     if (!text) return sendErr(res, 400, 'Message is empty');
+
     const m = { id: db.seq++, roomId: room.id, userId: user.id, username: user.username, text, ts: now(), reactions: {} };
     db.messages.push(m);
     broadcast({ type: 'message', roomId: room.id, message: pubMsg(m) });
+
+    // Channel posts auto-forward to the group and pin there.
+    if (room.type === 'channel') {
+      const group = findGroup();
+      if (group && group.id !== room.id) {
+        const copy = {
+          id: db.seq++, roomId: group.id, userId: user.id, username: user.username,
+          text, ts: m.ts, reactions: m.reactions, linkedTo: m.id, fromChannel: true
+        };
+        db.messages.push(copy);
+        group.pinnedMsgId = copy.id; // older messages stay, only the pin moves
+        broadcast({ type: 'message', roomId: group.id, message: pubMsg(copy) });
+        broadcastPin(group);
+      }
+    }
+
     scheduleSave();
     return send(res, 200, { message: pubMsg(m) });
   }
@@ -410,8 +456,19 @@ async function api(req, res, url) {
     const m = db.messages.find((x) => x.id === Number(match[1]));
     if (!m) return sendErr(res, 404, 'Message not found');
     if (m.userId !== user.id && !user.isAdmin) return sendErr(res, 403, 'You can only delete your own messages');
-    db.messages = db.messages.filter((x) => x !== m);
-    broadcast({ type: 'delete', roomId: m.roomId, messageId: m.id });
+
+    // Deleting a channel post removes its group copies too.
+    const removed = [m].concat(copiesOf(m.id));
+    db.messages = db.messages.filter((x) => !removed.includes(x));
+
+    // Clear the pin if a pinned message was removed.
+    for (const room of db.rooms) {
+      if (room.pinnedMsgId && removed.some((x) => x.id === room.pinnedMsgId)) {
+        room.pinnedMsgId = null;
+        broadcastPin(room);
+      }
+    }
+    for (const x of removed) broadcast({ type: 'delete', roomId: x.roomId, messageId: x.id });
     scheduleSave();
     return send(res, 200, { ok: true });
   }
@@ -425,6 +482,14 @@ async function api(req, res, url) {
     if (!text) return sendErr(res, 400, 'Message is empty');
     m.text = text;
     m.editedAt = now();
+
+    // Edits to a channel post propagate to its group copies.
+    const copies = copiesOf(m.id);
+    for (const c of copies) {
+      c.text = text;
+      c.editedAt = m.editedAt;
+      broadcast({ type: 'update', roomId: c.roomId, message: pubMsg(c) });
+    }
     broadcast({ type: 'update', roomId: m.roomId, message: pubMsg(m) });
     scheduleSave();
     return send(res, 200, { message: pubMsg(m) });
@@ -436,57 +501,33 @@ async function api(req, res, url) {
     const body = await readJson(req, res); if (body === null) return;
     const emoji = String(body.emoji || '');
     if (!REACTIONS.includes(emoji)) return sendErr(res, 400, 'Unknown reaction');
-    if (!m.reactions) m.reactions = {};
-    const arr = m.reactions[emoji] || (m.reactions[emoji] = []);
-    const i = arr.indexOf(user.id);
-    if (i >= 0) arr.splice(i, 1); else arr.push(user.id);
-    if (!arr.length) delete m.reactions[emoji];
-    broadcast({ type: 'reaction', roomId: m.roomId, messageId: m.id, reactions: m.reactions });
+
+    // Reacting on the group copy targets the channel original; reactions stay shared.
+    const target = reactionTarget(m);
+    if (!target.reactions) target.reactions = {};
+    const had = (target.reactions[emoji] || []).includes(user.id);
+
+    // One reaction per user per post: pull the user off every emoji first.
+    for (const e of Object.keys(target.reactions)) {
+      target.reactions[e] = target.reactions[e].filter((id) => id !== user.id);
+      if (!target.reactions[e].length) delete target.reactions[e];
+    }
+    if (!had) target.reactions[emoji] = (target.reactions[emoji] || []).concat(user.id);
+
+    // Keep every copy in sync (same counts shown in the channel and the group).
+    const syncd = [target].concat(copiesOf(target.id));
+    for (const c of syncd) c.reactions = target.reactions;
+    for (const x of syncd) {
+      broadcast({ type: 'reaction', roomId: x.roomId, messageId: x.id, reactions: target.reactions });
+    }
     scheduleSave();
-    return send(res, 200, { reactions: m.reactions });
+    return send(res, 200, { reactions: target.reactions });
   }
 
-  /* ---- admin ---- */
+  /* ---- owner only ---- */
 
-  if (method === 'POST' && p === '/api/rooms' && user.isAdmin) {
-    const body = await readJson(req, res); if (body === null) return;
-    const name = String(body.name || '').trim().slice(0, 40);
-    const type = body.type === 'channel' ? 'channel' : 'group';
-    if (!name) return sendErr(res, 400, 'Name is required');
-    const room = makeRoom(name, type, null, user.id);
-    db.rooms.push(room);
-    const m = sysMsg(room.id, type === 'channel' ? 'Only admins can post here.' : 'Everyone can post here.');
-    db.messages.push(m);
-    broadcast({ type: 'room', room, message: pubMsg(m) });
-    scheduleSave();
-    return send(res, 200, { room });
-  }
-
-  if (method === 'PATCH' && (match = p.match(/^\/api\/rooms\/(\d+)$/)) && user.isAdmin) {
-    const room = db.rooms.find((r) => r.id === Number(match[1]));
-    if (!room) return sendErr(res, 404, 'Room not found');
-    const body = await readJson(req, res); if (body === null) return;
-    const name = String(body.name || '').trim().slice(0, 40);
-    if (!name) return sendErr(res, 400, 'Name is required');
-    room.name = name;
-    broadcast({ type: 'room-update', room });
-    scheduleSave();
-    return send(res, 200, { room });
-  }
-
-  if (method === 'DELETE' && (match = p.match(/^\/api\/rooms\/(\d+)$/)) && user.isAdmin) {
-    const room = db.rooms.find((r) => r.id === Number(match[1]));
-    if (!room) return sendErr(res, 404, 'Room not found');
-    if (db.rooms.length <= 1) return sendErr(res, 400, 'You need at least one chat');
-    db.rooms = db.rooms.filter((r) => r !== room);
-    db.messages = db.messages.filter((m) => m.roomId !== room.id);
-    for (const uid of Object.keys(db.reads)) delete db.reads[uid][room.id];
-    broadcast({ type: 'room-deleted', roomId: room.id });
-    scheduleSave();
-    return send(res, 200, { ok: true });
-  }
-
-  if (method === 'POST' && (match = p.match(/^\/api\/users\/(\d+)\/admin$/)) && user.isAdmin) {
+  if (method === 'POST' && (match = p.match(/^\/api\/users\/(\d+)\/admin$/))) {
+    if (!user.isOwner) return sendErr(res, 403, 'Only the owner can manage admins');
     const target = db.users.find((u) => u.id === Number(match[1]));
     if (!target) return sendErr(res, 404, 'User not found');
     if (target.isOwner) return sendErr(res, 403, 'The owner cannot be changed');
