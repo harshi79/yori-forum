@@ -1,98 +1,71 @@
-# Yori Forum 🗨️
+# yori
 
-Your own **Telegram-style forum** that nobody can ban — a channel where only admins post, plus a group where everyone chats. No email, no phone number, no personal ID: people just pick a **username + password** and they're in.
+A small self-hosted forum that works like Telegram. One channel where only admins post, one group where everyone talks. People sign up with just a username and password — no email, no phone number, no accounts on anyone else's platform.
 
-Built with **zero dependencies** (plain Node.js) so it runs on any free host.
+Runs on plain Node.js with zero dependencies. No database server, no build step. Data lives in a single JSON file.
 
-## What you get
+## Run it
 
-| | |
-|---|---|
-| 📣 **Channel** | Admin-only posting (like a TG channel). Everyone reads + reacts. |
-| 💬 **Group** | Everyone chats, like a normal group chat. |
-| 👤 **Simple auth** | Username + password only. Passwords are scrypt-hashed. |
-| 🔗 **Direct join links** | Share `https://your-site.com/r/announcements` — like a `t.me/` link. |
-| ⚡ **Live updates** | New messages, reactions, typing indicators, online status — instantly (SSE, with polling fallback). |
-| 🔔 **Unread badges** | Per-chat unread counts, "new messages" pill, title counter. |
-| 😀 **Reactions** | 👍 ❤️ 😂 🔥 😮 😢 🙏 on any message. |
-| ✏️ **Edit / delete** | Edit your messages, delete yours (admins can delete any). |
-| 👑 **Admin panel** | First registered account = owner. Promote/demote admins, create/rename/delete chats. |
-| 🌓 **Dark + light** | Telegram-style dark theme by default, light mode toggle. |
-| 📱 **Mobile-ready** | Responsive with a slide-out chat list — feels like an app. |
-| 💾 **Backup** | One-click JSON export of all users/chats/messages. |
-
-## Run it (10 seconds)
-
-Requires Node.js 18+ (no `npm install` needed — there are no dependencies!):
-
-```bash
+```
 node server.js
 ```
 
-Open `http://localhost:3000`.
+That's it. Open `http://localhost:3000`.
 
-> 👑 **The FIRST account you register becomes the admin (owner).**
-> Register yourself first, then share the link with your people.
+**The first account you register becomes the owner.** Register yourself before sharing the link with anyone.
 
-Your data lives in `data/db.json` (created automatically, never committed to git).
+## How it works
 
-### Environment variables
+- **Channel** — only admins can post. Everyone else reads and reacts. Like a Telegram channel.
+- **Group** — everyone posts. Like a Telegram group.
+- Invite links look like `https://your-domain.com/r/announcements` — same idea as a `t.me/` link. Anyone who signs in through the link lands directly in that chat.
+- New messages, reactions, typing and online status arrive live (SSE, with polling fallback).
+- Admins manage everything from the panel: promote/demote admins, create, rename and delete chats, download a backup.
 
-| Var | Default | Purpose |
+Two chats are created on first start: `Announcements` (channel) and `General` (group). Rename or delete them from the admin panel.
+
+## Configuration
+
+| Variable | Default | What it does |
 |---|---|---|
-| `PORT` | `3000` | Server port |
-| `HOST` | `0.0.0.0` | Bind address |
+| `PORT` | `3000` | Listen port |
+| `HOST` | `0.0.0.0` | Listen address |
 
-## How to use it like Telegram
+Data is stored in `data/db.json`. The folder is created automatically and git-ignored.
 
-1. **Register first** → you become the owner/admin.
-2. You get two chats out of the box:
-   - **Announcements** (channel) — only you and other admins can post. Everyone else reads & reacts.
-   - **General** (group) — everyone can talk.
-3. **Invite people**: tap the 🔗 share button in the chat header (or Chat info → Invite link) and send them the link, exactly like a `t.me/` invite. They register with username+password and land straight in the chat.
-4. Make more channels/groups anytime in the **Admin panel** (⚙️ in the sidebar).
-5. Promote trusted people to admin so they can also post in channels.
+## Deploying on Botkeep
 
-## Free deployment
+Works on the free plan — one slot is plenty.
 
-Because there are zero dependencies and it's a single small Node process, it fits in every free tier:
+1. Push this repo to GitHub (or download it as a ZIP).
+2. In Botkeep, create a **Node.js** workload.
+3. Import the repo (GitHub) or upload the ZIP.
+4. Start command: `node server.js` (or `npm start`).
+5. Suggested resources: 256 MB RAM, 10% CPU, 256 MB storage. That comfortably runs a small community.
+6. Start the server. Register your account first — it becomes the owner.
 
-### Option A — Oracle Cloud "Always Free" (best: free forever + persistent disk)
-1. Create a free account at [cloud.oracle.com](https://www.oracle.com/cloud/free/) (always-free ARM VM included).
-2. Install Node.js, upload this folder, run `node server.js` behind their included reverse proxy or `sudo apt install nginx`.
+Health check path if you want one: `/healthz`.
 
-### Option B — Render.com (easiest)
-1. Push this repo to GitHub.
-2. On [render.com](https://render.com) → **New → Web Service** → pick the repo (a `render.yaml` is included).
-3. Build command: *(nothing)* · Start command: `node server.js` · Instance: **Free**.
+Notes:
 
-⚠️ **Free-host warning:** free tiers usually have an *ephemeral disk* — when the service restarts/redeploys, `data/db.json` resets. If you use a free tier, download a backup from the Admin panel regularly. For permanent storage use Oracle (above), a paid disk ($1/mo on Render), or any cheap/free VPS.
+- The app binds to `0.0.0.0` and respects `PORT`, so it fits any container-style host.
+- Backups: Admin panel → Data → **Download backup (JSON)**. Do this regularly. A backup plus a fresh deploy gets you running again anywhere.
+- Restoring: replace `data/db.json` with your backup file and restart.
 
-### Option C — Any VPS / home server / Termux
-```bash
-node server.js
-```
-That's it. Put it behind nginx or Caddy if you want HTTPS.
+## Deploying elsewhere
 
-## Backup & restore
+Anywhere Node.js 18+ runs: Render, Railway, Koyeb, Fly, a VPS, or even Termux. Same start command. A `render.yaml` is included if you use Render.
 
-- **Backup**: Admin panel → *Download data backup* (JSON with users, chats, messages).
-- **Restore**: replace `data/db.json` with your backup file and restart.
+Free hosts with ephemeral disks will lose `data/db.json` on redeploy — keep backups, or use a host with persistent storage.
 
-## Security notes
+## Security
 
-- Passwords: scrypt + per-user random salt, constant-time compare.
-- Sessions: 256-bit random tokens, HttpOnly cookies.
-- All user content is HTML-escaped; links are sanitized.
-- Basic rate-limiting on messages.
-- This is a small self-hosted forum: great for a community of friends/followers. Don't run a 10k-user public platform on a JSON file. 🙂
+- Passwords hashed with scrypt and a per-user salt.
+- Sessions are 256-bit random tokens in HttpOnly cookies.
+- All user input is escaped; links are sanitized to http(s).
+- Simple rate limiting on messages.
+- Right user, right scale: a JSON file store is meant for communities of friends and followers, not thousands of concurrent users.
 
-## Project structure
+## License
 
-```
-server.js          # whole backend: HTTP + API + SSE + JSON storage (~600 lines)
-public/index.html  # app shell
-public/style.css   # Telegram-style UI (dark + light)
-public/app.js      # frontend logic (no framework)
-data/db.json       # your data (auto-created, git-ignored)
-```
+MIT. The bundled Manrope font is under the SIL Open Font License (`public/fonts/OFL.txt`).

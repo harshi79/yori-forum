@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 'use strict';
 /*
- * Yori Forum — a self-hosted, Telegram-style forum.
- *   • "Channel" rooms: only admins can post, everyone reads
- *   • "Group" rooms: everyone can chat
+ * yori — a small self-hosted forum that works like Telegram.
+ *   • "channel" rooms: only admins post, everyone reads
+ *   • "group" rooms: everyone chats
  *   • Username + password auth (no email, no phone)
  *   • Live updates over Server-Sent Events (SSE)
  *   • Zero npm dependencies — plain Node.js, JSON file storage
  *
- * Run:  node server.js     (or: npm start)
+ * Run:  node server.js   (or: npm start)
  * Data: ./data/db.json (created automatically, git-ignored)
  */
 
@@ -16,6 +16,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const zlib = require('zlib');
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const HOST = process.env.HOST || '0.0.0.0';
@@ -130,8 +131,8 @@ function loadDb() {
     const channel = makeRoom('Announcements', 'channel', 'announcements', null);
     const group = makeRoom('General', 'group', 'general', null);
     db.rooms.push(channel, group);
-    db.messages.push(sysMsg(channel.id, '📣 Welcome to the channel. Only admins can post here — everyone can read and react.'));
-    db.messages.push(sysMsg(group.id, '💬 Welcome to the group. Everyone can chat here.'));
+    db.messages.push(sysMsg(channel.id, 'Only admins can post here. Everyone else can read and react.'));
+    db.messages.push(sysMsg(group.id, 'Everyone can post here.'));
     saveNow();
   }
 }
@@ -294,10 +295,10 @@ async function api(req, res, url) {
     const user = makeUser(username, password);
     db.users.push(user);
 
-    // A friendly join notice in the general group.
+    // A join notice in the general group.
     const general = db.rooms.find((r) => r.slug === 'general') || db.rooms.find((r) => r.type === 'group');
     if (general) {
-      const m = sysMsg(general.id, '🎉 ' + user.username + ' joined the forum');
+      const m = sysMsg(general.id, user.username + ' joined');
       db.messages.push(m);
       broadcast({ type: 'message', roomId: general.id, message: pubMsg(m) });
     }
@@ -454,7 +455,7 @@ async function api(req, res, url) {
     if (!name) return sendErr(res, 400, 'Name is required');
     const room = makeRoom(name, type, null, user.id);
     db.rooms.push(room);
-    const m = sysMsg(room.id, type === 'channel' ? '📣 New channel created. Only admins can post here.' : '💬 New group created. Everyone can chat here.');
+    const m = sysMsg(room.id, type === 'channel' ? 'Only admins can post here.' : 'Everyone can post here.');
     db.messages.push(m);
     broadcast({ type: 'room', room, message: pubMsg(m) });
     scheduleSave();
@@ -498,7 +499,7 @@ async function api(req, res, url) {
 
   if (method === 'GET' && p === '/api/admin/export' && user.isAdmin) {
     const dump = {
-      app: 'yori-forum',
+      app: 'yori',
       exportedAt: new Date().toISOString(),
       users: db.users.map((u) => ({ id: u.id, username: u.username, isAdmin: u.isAdmin, isOwner: !!u.isOwner, joined: u.joined })),
       rooms: db.rooms,
@@ -506,7 +507,7 @@ async function api(req, res, url) {
     };
     return send(res, 200, JSON.stringify(dump, null, 2), {
       'Content-Type': 'application/json; charset=utf-8',
-      'Content-Disposition': 'attachment; filename="yori-forum-backup.json"'
+      'Content-Disposition': 'attachment; filename="yori-backup.json"'
     });
   }
 
@@ -527,7 +528,9 @@ const MIME = {
   '.ico': 'image/x-icon',
   '.json': 'application/json',
   '.webmanifest': 'application/manifest+json',
-  '.txt': 'text/plain; charset=utf-8'
+  '.txt': 'text/plain; charset=utf-8',
+  '.ttf': 'font/ttf',
+  '.woff2': 'font/woff2'
 };
 
 function serveStatic(req, res, url) {
@@ -539,18 +542,33 @@ function serveStatic(req, res, url) {
   const file = path.normalize(path.join(PUBLIC_DIR, p));
   if (!file.startsWith(PUBLIC_DIR + path.sep) && file !== PUBLIC_DIR) return sendErr(res, 403, 'Forbidden');
 
-  fs.stat(file, (err, st) => {
-    if (!err && st.isFile()) {
-      res.writeHead(200, {
-        'Content-Type': MIME[path.extname(file).toLowerCase()] || 'application/octet-stream',
-        'Cache-Control': 'no-cache'
-      });
-      fs.createReadStream(file).pipe(res);
-    } else {
+  fs.readFile(file, (err, buf) => {
+    if (err) {
       // SPA fallback: /r/anything → index.html
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
-      fs.createReadStream(path.join(PUBLIC_DIR, 'index.html')).pipe(res);
+      return fs.readFile(path.join(PUBLIC_DIR, 'index.html'), (err2, index) => {
+        if (err2) return sendErr(res, 404, 'Not found');
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
+        res.end(index);
+      });
     }
+    const ext = path.extname(file).toLowerCase();
+    const type = MIME[ext] || 'application/octet-stream';
+    const isFont = ext === '.ttf' || ext === '.woff2';
+    const headers = {
+      'Content-Type': type,
+      'Cache-Control': isFont ? 'public, max-age=31536000, immutable' : 'no-cache'
+    };
+    // gzip text responses when the client accepts it
+    if (/\bgzip\b/.test(String(req.headers['accept-encoding'] || '')) &&
+        /^(text\/|application\/(json|javascript|manifest\+json))/.test(type)) {
+      try {
+        buf = zlib.gzipSync(buf);
+        headers['Content-Encoding'] = 'gzip';
+        headers['Vary'] = 'Accept-Encoding';
+      } catch (e) { /* send uncompressed */ }
+    }
+    res.writeHead(200, headers);
+    res.end(req.method === 'HEAD' ? undefined : buf);
   });
 }
 
@@ -573,8 +591,7 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, HOST, () => {
-  console.log('[yori] Yori Forum is running on http://' + HOST + ':' + PORT);
-  console.log('[yori] The FIRST account you register becomes the admin.');
+  console.log('[yori] running on http://' + HOST + ':' + PORT + ' — first registered account becomes the admin');
 });
 
 function shutdown() {

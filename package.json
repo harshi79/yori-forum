@@ -1,7 +1,7 @@
 {
   "name": "yori-forum",
   "version": "1.0.0",
-  "description": "Self-hosted Telegram-style forum: admin-only channel + open group chat. Zero dependencies, free to run anywhere.",
+  "description": "Self-hosted Telegram-style forum: admin channel + group chat, username/password auth, zero dependencies.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"

@@ -1,7 +1,7 @@
 'use strict';
 /*
- * Yori Forum — frontend
- * Vanilla JS, no build step, no dependencies.
+ * yori — frontend
+ * No frameworks, no build step.
  */
 (() => {
 
@@ -17,7 +17,6 @@
   ));
 
   const fmtTime = (ts) => new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
   const dayKey = (ts) => new Date(ts).toDateString();
 
   function fmtDay(ts) {
@@ -31,28 +30,26 @@
 
   function shortTime(ts) {
     const d = new Date(ts);
-    const today = new Date();
-    if (d.toDateString() === today.toDateString()) return fmtTime(ts);
+    if (d.toDateString() === new Date().toDateString()) return fmtTime(ts);
     if (Date.now() - ts < 6 * 864e5) return d.toLocaleDateString([], { weekday: 'short' });
     return d.toLocaleDateString([], { day: 'numeric', month: 'short' });
   }
 
-  const PALETTE = ['#e17076', '#7bc862', '#e5ca77', '#65aadd', '#a695e7', '#ee7aae', '#faa774', '#6ec9cb'];
+  const PALETTE = ['#d5787e', '#7bb662', '#d4b95e', '#61a5dd', '#a08fdc', '#dd7ba3', '#e09a5f', '#63b8ba'];
   function colorFor(name) {
     let h = 0;
     const s = String(name || '?');
     for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
     return PALETTE[h % PALETTE.length];
   }
-  const initials = (name) => {
+  function initials(name) {
     const parts = String(name || '?').trim().split(/[\s_-]+/).filter(Boolean);
     if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
     return String(name || '?').slice(0, 1).toUpperCase();
-  };
+  }
 
   function renderText(text) {
-    const safe = esc(text);
-    return safe
+    return esc(text)
       .replace(/(https?:\/\/[^\s<]+)/g, (url) => '<a href="' + url + '" target="_blank" rel="noopener noreferrer">' + url + '</a>')
       .replace(/\n/g, '<br>');
   }
@@ -115,19 +112,19 @@
     loadingOlder: false,
     atBottom: true,
     editing: null,
-    typing: {},        // roomId -> { userId: { name, until } }
+    typing: {},
     initialSlug: null,
     suppressAnim: false
   };
 
   let es = null;
   let pollTimer = null;
-  let sseEverOpened = false;
   let currentModal = null;
   let readTimer = null;
   let lastTypingSent = 0;
   let toastTimer = null;
   let emojiPopFor = null;
+  let ctxMenu = null;
 
   const activeRoom = () => state.rooms.find((r) => r.id === state.activeRoomId) || null;
   const canPost = (room) => !!room && (room.type !== 'channel' || !!(state.me && state.me.isAdmin));
@@ -141,11 +138,11 @@
     el.textContent = msg;
     el.classList.add('show');
     if (toastTimer) clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => el.classList.remove('show'), 2600);
+    toastTimer = setTimeout(() => el.classList.remove('show'), 2400);
   }
 
   /* ---------------------------------------------------------------- */
-  /* Auth screen                                                       */
+  /* Auth                                                              */
   /* ---------------------------------------------------------------- */
 
   let authMode = 'login';
@@ -157,18 +154,21 @@
 
   function setAuthMode(mode) {
     authMode = mode;
-    $$('.tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === mode));
-    $('#authSubmit').textContent = mode === 'login' ? 'Log in' : 'Create account';
-    $('#authPass').setAttribute('autocomplete', mode === 'login' ? 'current-password' : 'new-password');
+    const login = mode === 'login';
+    $('#authSub').textContent = login ? 'Sign in to continue' : 'Create an account';
+    $('#authSubmit').textContent = login ? 'Sign in' : 'Create account';
+    $('#authPass').setAttribute('autocomplete', login ? 'current-password' : 'new-password');
+    $('#authAltText').textContent = login ? 'New here?' : 'Already have an account?';
+    $('#authToggle').textContent = login ? 'Create an account' : 'Sign in';
     $('#authError').textContent = '';
-    if (mode === 'register') {
+    if (!login) {
       api('/api/meta').then((m) => {
-        $('#authHint').textContent = m.userCount === 0
-          ? '👑 You are the first one — this account becomes the admin.'
-          : 'No email, no phone number — just a username and a password.';
+        $('#authNote').textContent = m.userCount === 0
+          ? 'You are the first user — this account becomes the admin.'
+          : 'Accounts need only a username and password.';
       }).catch(() => {});
     } else {
-      $('#authHint').textContent = 'No email, no phone number — just a username and a password.';
+      $('#authNote').textContent = 'Accounts need only a username and password.';
     }
   }
 
@@ -178,8 +178,9 @@
     const username = $('#authUser').value.trim();
     const password = $('#authPass').value;
     $('#authError').textContent = '';
-    if (!username || !password) { $('#authError').textContent = 'Please fill in both fields'; return; }
+    if (!username || !password) { $('#authError').textContent = 'Enter a username and password'; return; }
     btn.disabled = true;
+    btn.textContent = authMode === 'login' ? 'Signing in…' : 'Creating account…';
     try {
       const r = await api('/api/' + authMode, { method: 'POST', body: { username, password } });
       state.me = r.user;
@@ -188,6 +189,7 @@
       $('#authError').textContent = err.message;
     } finally {
       btn.disabled = false;
+      btn.textContent = authMode === 'login' ? 'Sign in' : 'Create account';
     }
   }
 
@@ -203,7 +205,7 @@
     connectSSE();
     const slug = state.initialSlug;
     const room = slug && state.rooms.find((r) => r.slug === slug);
-    if (slug && !room) toast('That chat link doesn\'t exist');
+    if (slug && !room) toast('That link points to a chat that was removed');
     openRoom(room ? room.id : state.rooms[0].id, { history: 'replace' });
   }
 
@@ -229,10 +231,10 @@
     renderComposer();
     loadMessages(id);
     if (opts.history !== false) {
-      const fn = opts.history === 'replace' ? 'replaceState' : 'pushState';
-      history[fn]({}, '', '/r/' + room.slug);
+      history[opts.history === 'replace' ? 'replaceState' : 'pushState']({}, '', '/r/' + room.slug);
     }
     closeSidebar();
+    closeCtxMenu();
     if (window.matchMedia('(pointer: fine)').matches) $('#input') && $('#input').focus();
   }
 
@@ -243,7 +245,7 @@
       state.messages = r.messages;
       state.hasMore = r.hasMore;
       renderMessages({ scroll: 'bottom' });
-      markRead();
+      markRead(true);
     } catch (e) {
       toast(e.message);
     }
@@ -254,12 +256,12 @@
   /* ---------------------------------------------------------------- */
 
   function previewText(room, lm) {
-    if (!lm) return 'No messages yet';
+    if (!lm) return 'No messages';
     if (lm.system) return lm.text;
     const prefix = lm.userId === state.me.id ? 'You: '
       : (room.type === 'group' && lm.username ? lm.username + ': ' : '');
     let t = (prefix + String(lm.text)).replace(/\n/g, ' ');
-    if (t.length > 46) t = t.slice(0, 46) + '…';
+    if (t.length > 44) t = t.slice(0, 44) + '…';
     return t;
   }
 
@@ -284,20 +286,19 @@
       list.appendChild(item);
     }
 
-    // me card
     const me = state.me;
     $('#meCard').innerHTML =
       '<div class="avatar" style="background:' + colorFor(me.username) + '">' + esc(initials(me.username)) + '</div>' +
       '<div style="min-width:0"><div class="me-name">' + esc(me.username) + '</div>' +
-      (me.isAdmin ? '<div class="me-tag">' + (me.isOwner ? '👑 owner' : '★ admin') + '</div>' : '') + '</div>';
+      (me.isAdmin ? '<div class="me-chip">' + (me.isOwner ? 'owner' : 'admin') + '</div>' : '') + '</div>';
     $('#adminBtn').classList.toggle('hidden', !me.isAdmin);
 
     const total = state.rooms.reduce((a, r) => a + (r.unread || 0), 0);
-    document.title = (total ? '(' + total + ') ' : '') + 'Yori Forum';
+    document.title = (total ? '(' + total + ') ' : '') + 'yori';
   }
 
   /* ---------------------------------------------------------------- */
-  /* Header                                                            */
+  /* Header & composer                                                 */
   /* ---------------------------------------------------------------- */
 
   function renderHeader() {
@@ -307,9 +308,8 @@
     av.textContent = initials(room.name);
     av.style.background = colorFor(room.name);
     $('#headName').innerHTML = esc(room.name) + '<span class="type-tag">' + (room.type === 'channel' ? 'channel' : 'group') + '</span>';
-    const online = state.online.size;
     const word = room.type === 'channel' ? 'subscriber' + (state.users.size === 1 ? '' : 's') : 'member' + (state.users.size === 1 ? '' : 's');
-    $('#headSub').innerHTML = esc(state.users.size + ' ' + word) + ' · <span class="on">' + online + ' online</span>';
+    $('#headSub').innerHTML = esc(state.users.size + ' ' + word) + ' · <span class="on">' + state.online.size + ' online</span>';
   }
 
   function renderComposer() {
@@ -333,12 +333,11 @@
 
   function reactionsHtml(m) {
     if (!m.reactions) return '';
-    const keys = Object.keys(m.reactions);
+    const keys = Object.keys(m.reactions).filter((k) => (m.reactions[k] || []).length);
     if (!keys.length) return '';
     let h = '<div class="reactions">';
     for (const emoji of keys) {
-      const users = m.reactions[emoji] || [];
-      if (!users.length) continue;
+      const users = m.reactions[emoji];
       const mine = users.includes(state.me.id);
       h += '<button class="react-pill' + (mine ? ' mine' : '') + '" data-emoji="' + esc(emoji) + '" title="React ' + esc(emoji) + '">' +
         esc(emoji) + '<span class="cnt">' + users.length + '</span></button>';
@@ -359,7 +358,7 @@
     const row = document.createElement('div');
 
     if (m.system) {
-      row.className = 'msg-row sys' + (state.suppressAnim ? ' no-anim' : '');
+      row.className = 'msg-row sys no-anim';
       row.dataset.id = m.id;
       const s = document.createElement('div');
       s.className = 'sysmsg';
@@ -371,7 +370,7 @@
     const mine = m.userId === state.me.id;
     const room = activeRoom();
     const grouped = prev && !prev.system && prev.userId === m.userId && (m.ts - prev.ts) < 300000;
-    const user = state.users.get(m.userId) || { username: m.username || 'user' };
+    const user = state.users.get(m.userId) || { username: m.username || 'user', isAdmin: false };
     const big = isEmojiOnly(m.text);
 
     row.className = 'msg-row' + (mine ? ' mine' : '') + (state.suppressAnim ? ' no-anim' : '');
@@ -383,7 +382,8 @@
     }
     let nameHtml = '';
     if (!mine && !grouped && room && room.type === 'group') {
-      nameHtml = '<div class="msg-name" style="color:' + colorFor(user.username) + '">' + esc(user.username) + '</div>';
+      nameHtml = '<div class="msg-name" style="color:' + colorFor(user.username) + '">' + esc(user.username) +
+        (user.isAdmin ? '<span class="admin-chip">admin</span>' : '') + '</div>';
     }
 
     const bodyHtml =
@@ -412,7 +412,7 @@
     if (!state.messages.length) {
       const empty = document.createElement('div');
       empty.className = 'empty';
-      empty.textContent = 'No messages yet — say hi 👋';
+      empty.textContent = 'No messages yet';
       list.appendChild(empty);
     } else {
       let prev = null;
@@ -438,7 +438,7 @@
     const list = $('#messages');
     const empty = list.querySelector('.empty');
     if (empty) empty.remove();
-    const prev = state.messages[state.messages.length - 2]; // m already pushed
+    const prev = state.messages[state.messages.length - 2];
     if (!prev || dayKey(prev.ts) !== dayKey(m.ts)) list.appendChild(dayDividerEl(m.ts));
     list.appendChild(messageEl(m, prev));
     if (state.atBottom) {
@@ -461,24 +461,25 @@
   }
 
   /* ---------------------------------------------------------------- */
-  /* Read state / unread                                               */
+  /* Read state                                                        */
   /* ---------------------------------------------------------------- */
 
-  function markRead() {
+  function markRead(force) {
     const room = activeRoom();
-    if (!room || !room.unread) return;
+    if (!room) return;
+    if (!force && !room.unread && !room._dirty) return;
     const roomId = room.id;
     if (readTimer) clearTimeout(readTimer);
     readTimer = setTimeout(async () => {
       if (state.activeRoomId !== roomId) return;
       const r = state.rooms.find((x) => x.id === roomId);
-      if (r) { r.unread = 0; renderSidebar(); }
+      if (r) { r.unread = 0; r._dirty = false; renderSidebar(); }
       try { await api('/api/rooms/' + roomId + '/read', { method: 'POST' }); } catch (e) { /* ignore */ }
     }, 250);
   }
 
   /* ---------------------------------------------------------------- */
-  /* Composer / send / edit                                            */
+  /* Composer                                                          */
   /* ---------------------------------------------------------------- */
 
   function autoSize() {
@@ -521,7 +522,6 @@
       cancelEdit();
       try {
         await api('/api/messages/' + m.id, { method: 'PATCH', body: { text } });
-        toast('Message edited');
       } catch (e) { toast(e.message); }
       return;
     }
@@ -539,14 +539,13 @@
   }
 
   /* ---------------------------------------------------------------- */
-  /* Live events (SSE + polling fallback)                              */
+  /* Live events                                                       */
   /* ---------------------------------------------------------------- */
 
   function connectSSE() {
     if (es) { es.close(); es = null; }
     es = new EventSource('/api/events');
     es.onopen = () => {
-      sseEverOpened = true;
       if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
     };
     es.onmessage = (e) => {
@@ -575,7 +574,7 @@
           }
         }
       }
-    } catch (e) { /* offline; keep trying */ }
+    } catch (e) { /* keep trying */ }
   }
 
   function setTyping(roomId, userId, username) {
@@ -619,7 +618,6 @@
         if (room) {
           room.lastMessage = { text: msg.text, ts: msg.ts, userId: msg.userId, username: msg.username, system: !!msg.system };
         }
-        // clear typing for this user
         if (state.typing[ev.roomId] && state.typing[ev.roomId][msg.userId]) {
           delete state.typing[ev.roomId][msg.userId];
           renderTyping();
@@ -630,8 +628,10 @@
             state.messages.push(msg);
             appendMessageDom(msg);
           }
-          if (!mine && document.hasFocus() && state.atBottom) markRead();
-          else if (!mine && (!document.hasFocus() || !state.atBottom)) {
+          if (!mine && document.hasFocus() && state.atBottom) {
+            if (room) room._dirty = true;
+            markRead();
+          } else if (!mine) {
             if (room) room.unread = (room.unread || 0) + 1;
           }
         } else if (!mine) {
@@ -647,7 +647,7 @@
         const el = $('#messages [data-id="' + ev.messageId + '"]');
         if (el) el.remove();
         const room = state.rooms.find((r) => r.id === ev.roomId);
-        if (room && room.lastMessage && ev.roomId === state.activeRoomId && state.messages.length) {
+        if (room && ev.roomId === state.activeRoomId && state.messages.length) {
           const last = state.messages[state.messages.length - 1];
           room.lastMessage = { text: last.text, ts: last.ts, userId: last.userId, username: last.username, system: !!last.system };
         }
@@ -693,11 +693,11 @@
 
       case 'room-deleted': {
         state.rooms = state.rooms.filter((r) => r.id !== ev.roomId);
-        if (state.activeRoomId === ev.roomId) {
-          if (state.rooms.length) openRoom(state.rooms[0].id, { history: 'replace' });
+        if (state.activeRoomId === ev.roomId && state.rooms.length) {
+          openRoom(state.rooms[0].id, { history: 'replace' });
         }
         renderSidebar();
-        toast('Chat was deleted');
+        toast('Chat deleted');
         break;
       }
 
@@ -709,7 +709,7 @@
           if (wasAdmin !== ev.user.isAdmin) {
             renderSidebar();
             renderComposer();
-            toast(ev.user.isAdmin ? '👑 You are now an admin' : 'You are no longer an admin');
+            toast(ev.user.isAdmin ? 'You are now an admin' : 'Admin access removed');
           }
         }
         renderHeader();
@@ -719,7 +719,7 @@
   }
 
   /* ---------------------------------------------------------------- */
-  /* Reactions & message tools                                         */
+  /* Reactions                                                         */
   /* ---------------------------------------------------------------- */
 
   function closeEmojiPop() {
@@ -751,7 +751,6 @@
   }
 
   async function toggleReact(m, emoji) {
-    // optimistic
     if (!m.reactions) m.reactions = {};
     const arr = m.reactions[emoji] || (m.reactions[emoji] = []);
     const i = arr.indexOf(state.me.id);
@@ -763,6 +762,53 @@
       m.reactions = r.reactions;
       refreshMessage(m);
     } catch (e) { toast(e.message); }
+  }
+
+  /* ---------------------------------------------------------------- */
+  /* Context menu (right click)                                        */
+  /* ---------------------------------------------------------------- */
+
+  function closeCtxMenu() {
+    if (ctxMenu) { ctxMenu.remove(); ctxMenu = null; }
+  }
+
+  function openCtxMenu(x, y, m) {
+    closeCtxMenu();
+    const menu = document.createElement('div');
+    menu.className = 'ctx-menu';
+    const mine = m.userId === state.me.id;
+    const items = [
+      { id: 'copy', label: 'Copy text', icon: ICONS.copy },
+      { id: 'react', label: 'React', icon: ICONS.smile },
+      mine && { id: 'edit', label: 'Edit', icon: ICONS.pencil },
+      (mine || state.me.isAdmin) && { id: 'del', label: 'Delete', icon: ICONS.trash, danger: true }
+    ].filter(Boolean);
+
+    for (const it of items) {
+      const b = document.createElement('button');
+      b.className = 'ctx-item' + (it.danger ? ' danger' : '');
+      b.innerHTML = it.icon + '<span>' + esc(it.label) + '</span>';
+      b.addEventListener('click', (e) => {
+        e.stopPropagation();
+        closeCtxMenu();
+        if (it.id === 'copy') copyText(m.text).then(() => toast('Copied')).catch(() => {});
+        else if (it.id === 'react') openEmojiPop($('#messages [data-id="' + m.id + '"]'));
+        else if (it.id === 'edit') startEdit(m);
+        else if (it.id === 'del') {
+          openConfirm('Delete message?', 'This can\'t be undone.', 'Delete', true, async () => {
+            try { await api('/api/messages/' + m.id, { method: 'DELETE' }); }
+            catch (err) { toast(err.message); }
+          });
+        }
+      });
+      menu.appendChild(b);
+    }
+
+    document.body.appendChild(menu);
+    const w = menu.offsetWidth, h = menu.offsetHeight;
+    menu.style.left = Math.max(8, Math.min(x, window.innerWidth - w - 8)) + 'px';
+    menu.style.top = Math.max(8, Math.min(y, window.innerHeight - h - 8)) + 'px';
+    ctxMenu = menu;
   }
 
   /* ---------------------------------------------------------------- */
@@ -786,12 +832,13 @@
     if (!m) return;
     currentModal = null;
     m.classList.remove('show');
-    setTimeout(() => m.remove(), 160);
+    setTimeout(() => m.remove(), 150);
   }
 
-  function openConfirm(title, label, danger, onYes) {
+  function openConfirm(title, body, label, danger, onYes) {
     const ov = openModal(
       '<h2>' + esc(title) + '</h2>' +
+      (body ? '<p class="sub">' + esc(body) + '</p>' : '') +
       '<div class="modal-actions">' +
         '<button class="btn ghost" data-act="no">Cancel</button>' +
         '<button class="btn ' + (danger ? 'danger' : 'primary') + '" data-act="yes">' + esc(label) + '</button>' +
@@ -809,7 +856,7 @@
     if (!room) return;
     const link = location.origin + '/r/' + room.slug;
     const users = Array.from(state.users.values())
-      .sort((a, b) => (state.online.has(b.id) - state.online.has(a.id)) || a.username.localeCompare(b.username));
+      .sort((a, b) => ((state.online.has(b.id) ? 1 : 0) - (state.online.has(a.id) ? 1 : 0)) || a.username.localeCompare(b.username));
 
     const membersHtml = users.map((u) =>
       '<div class="user-row">' +
@@ -818,7 +865,7 @@
         '</div>' +
         '<div class="uname">' + esc(u.username) + '</div>' +
         '<div class="utag ' + (u.isAdmin ? 'adm' : '') + '">' +
-          (u.isOwner ? '👑 owner' : u.isAdmin ? '★ admin' : (state.online.has(u.id) ? 'online' : '')) +
+          (u.isOwner ? 'owner' : u.isAdmin ? 'admin' : (state.online.has(u.id) ? 'online' : '')) +
         '</div>' +
       '</div>'
     ).join('');
@@ -826,31 +873,32 @@
     let adminHtml = '';
     if (state.me.isAdmin) {
       adminHtml =
-        '<section><h3>Admin</h3>' +
+        '<section><h3>Manage</h3>' +
           '<div class="form-row"><input id="renameInput" maxlength="40" value="' + esc(room.name) + '" placeholder="Chat name">' +
-          '<button class="btn ghost" id="renameBtn">Save</button></div>' +
+          '<button class="btn ghost" id="renameBtn">Rename</button></div>' +
           '<div class="modal-actions"><button class="btn danger" id="delRoomBtn">Delete chat</button></div>' +
         '</section>';
     }
 
     const ov = openModal(
       '<h2>Chat info</h2>' +
+      '<p class="sub">' + (room.type === 'channel' ? 'Channel — only admins can post.' : 'Group — everyone can post.') + '</p>' +
       '<div class="user-row" style="padding-left:0">' +
-        '<div class="uavatar" style="width:52px;height:52px;font-size:20px;background:' + colorFor(room.name) + '">' + esc(initials(room.name)) + '</div>' +
-        '<div><div class="uname" style="font-size:17px">' + esc(room.name) + '</div>' +
-        '<span class="room-tag">' + (room.type === 'channel' ? 'channel · admins post' : 'group · everyone chats') + '</span></div>' +
+        '<div class="uavatar" style="width:48px;height:48px;font-size:18px;background:' + colorFor(room.name) + '">' + esc(initials(room.name)) + '</div>' +
+        '<div><div class="uname" style="font-size:16px">' + esc(room.name) + '</div>' +
+        '<span class="room-tag">' + room.type + '</span></div>' +
       '</div>' +
       '<section><h3>Invite link</h3>' +
         '<div class="invite-box"><input readonly value="' + esc(link) + '" onclick="this.select()">' +
         '<button class="btn ghost" id="copyLinkBtn">' + ICONS.copy + 'Copy</button></div>' +
-        '<p class="sub" style="margin:8px 0 0">Anyone who logs in with this link lands straight in this chat.</p>' +
+        '<p class="sub" style="margin:8px 0 0">Anyone with this link can join after signing in.</p>' +
       '</section>' +
-      '<section><h3>People (' + users.length + ')</h3><div style="max-height:220px;overflow-y:auto">' + membersHtml + '</div></section>' +
+      '<section><h3>Members (' + users.length + ')</h3><div style="max-height:210px;overflow-y:auto">' + membersHtml + '</div></section>' +
       adminHtml
     );
 
     ov.querySelector('#copyLinkBtn').addEventListener('click', () => {
-      copyText(link).then(() => toast('Invite link copied 🔗')).catch(() => toast(link));
+      copyText(link).then(() => toast('Link copied')).catch(() => toast(link));
     });
 
     const renameBtn = ov.querySelector('#renameBtn');
@@ -869,7 +917,7 @@
     const delBtn = ov.querySelector('#delRoomBtn');
     if (delBtn) {
       delBtn.addEventListener('click', () => {
-        openConfirm('Delete “' + room.name + '”?', 'Delete', true, async () => {
+        openConfirm('Delete ' + room.name + '?', 'All messages in this chat will be removed.', 'Delete chat', true, async () => {
           try {
             await api('/api/rooms/' + room.id, { method: 'DELETE' });
             closeModal();
@@ -891,7 +939,7 @@
 
     const usersHtml = users.map((u) => {
       const isMe = u.id === state.me.id;
-      const btn = u.isOwner ? '<span class="utag adm">👑 owner</span>'
+      const btn = u.isOwner ? '<span class="utag adm">owner</span>'
         : '<button class="btn small ' + (u.isAdmin ? 'ghost' : 'primary') + '" data-uid="' + u.id + '" data-val="' + (u.isAdmin ? 'false' : 'true') + '">' +
             (u.isAdmin ? 'Demote' : 'Make admin') + '</button>';
       return '<div class="user-row">' +
@@ -901,33 +949,31 @@
     }).join('');
 
     const ov = openModal(
-      '<h2>👑 Admin panel</h2>' +
-      '<p class="sub">You control everything here — nobody else.</p>' +
-      '<section><h3>Create a chat</h3>' +
+      '<h2>Admin</h2>' +
+      '<p class="sub">The first account registered is the owner and can\'t be demoted.</p>' +
+      '<section><h3>New chat</h3>' +
         '<div class="form-row">' +
-          '<input id="newRoomName" maxlength="40" placeholder="Chat name">' +
+          '<input id="newRoomName" maxlength="40" placeholder="Name">' +
           '<select id="newRoomType"><option value="channel">Channel</option><option value="group">Group</option></select>' +
           '<button class="btn primary" id="createRoomBtn">Create</button>' +
         '</div>' +
-        '<p class="sub" style="margin:8px 0 0">Channel = only admins post (like a TG channel). Group = everyone chats.</p>' +
+        '<p class="sub" style="margin:8px 0 0">Channels: only admins post. Groups: everyone posts.</p>' +
       '</section>' +
-      '<section><h3>Your chats</h3>' + roomsHtml + '</section>' +
-      '<section><h3>People (' + users.length + ')</h3><div style="max-height:230px;overflow-y:auto">' + usersHtml + '</div></section>' +
-      '<section><h3>Backup</h3>' +
-        '<a class="btn ghost" href="/api/admin/export" download>⬇ Download data backup (.json)</a>' +
-        '<p class="sub" style="margin:8px 0 0">Do this regularly if you\'re on a free host that resets its disk.</p>' +
+      '<section><h3>Chats</h3>' + roomsHtml + '</section>' +
+      '<section><h3>Members (' + users.length + ')</h3><div style="max-height:220px;overflow-y:auto">' + usersHtml + '</div></section>' +
+      '<section><h3>Data</h3>' +
+        '<a class="btn ghost" href="/api/admin/export" download>Download backup (JSON)</a>' +
       '</section>'
     );
 
     ov.querySelector('#createRoomBtn').addEventListener('click', async () => {
       const name = ov.querySelector('#newRoomName').value.trim();
       const type = ov.querySelector('#newRoomType').value;
-      if (!name) { toast('Give the chat a name'); return; }
+      if (!name) { toast('Enter a name'); return; }
       try {
         const r = await api('/api/rooms', { method: 'POST', body: { name, type } });
         closeModal();
-        toast((type === 'channel' ? 'Channel' : 'Group') + ' created');
-        // open the new room once the event arrives (or directly)
+        toast('Chat created');
         setTimeout(() => {
           const room = state.rooms.find((x) => x.id === r.room.id);
           if (room) openRoom(room.id);
@@ -941,7 +987,7 @@
         const val = btn.dataset.val === 'true';
         try {
           await api('/api/users/' + uid + '/admin', { method: 'POST', body: { value: val } });
-          openAdminPanel(); // re-render
+          openAdminPanel();
         } catch (e) { toast(e.message); }
       });
     });
@@ -955,13 +1001,12 @@
     document.documentElement.dataset.theme = theme;
     try { localStorage.setItem('yori-theme', theme); } catch (e) {}
     $('#themeBtn').innerHTML = theme === 'dark' ? ICONS.sun : ICONS.moon;
-    $('#themeBtn').title = theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode';
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) meta.setAttribute('content', theme === 'dark' ? '#17212b' : '#ffffff');
   }
 
   /* ---------------------------------------------------------------- */
-  /* Sidebar (mobile drawer)                                           */
+  /* Mobile drawer                                                     */
   /* ---------------------------------------------------------------- */
 
   function openSidebar() {
@@ -978,12 +1023,11 @@
   /* ---------------------------------------------------------------- */
 
   function bindAuth() {
-    $$('.tab').forEach((t) => t.addEventListener('click', () => setAuthMode(t.dataset.tab)));
+    $('#authToggle').addEventListener('click', () => setAuthMode(authMode === 'login' ? 'register' : 'login'));
     $('#authForm').addEventListener('submit', submitAuth);
   }
 
   function bindApp() {
-    // sidebar
     $('#searchInput').addEventListener('input', renderSidebar);
     $('#menuBtn').addEventListener('click', openSidebar);
     $('#backdrop').addEventListener('click', closeSidebar);
@@ -996,16 +1040,14 @@
       location.href = '/';
     });
 
-    // header
     $('#headInfo').addEventListener('click', openRoomInfo);
     $('#shareBtn').addEventListener('click', () => {
       const room = activeRoom();
       if (!room) return;
       const link = location.origin + '/r/' + room.slug;
-      copyText(link).then(() => toast('Invite link copied — share it anywhere 🔗')).catch(() => toast(link));
+      copyText(link).then(() => toast('Link copied')).catch(() => toast(link));
     });
 
-    // composer
     const ta = $('#input');
     ta.addEventListener('input', () => {
       autoSize();
@@ -1022,27 +1064,22 @@
     $('#sendBtn').addEventListener('click', sendCurrent);
     $('#cancelEdit').addEventListener('click', cancelEdit);
 
-    // messages: scroll behaviour + pagination
     const list = $('#messages');
     list.addEventListener('scroll', () => {
-      const bottom = list.scrollHeight - list.scrollTop - list.clientHeight < 80;
-      const wasBottom = state.atBottom;
-      state.atBottom = bottom;
-      if (bottom) {
+      state.atBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 80;
+      if (state.atBottom) {
         $('#newPill').classList.add('hidden');
         markRead();
       }
       if (list.scrollTop < 60 && state.hasMore && !state.loadingOlder) loadOlder();
-
-      if (wasBottom !== bottom) renderTyping(); // reposition guard (no-op mostly)
     });
 
     $('#newPill').addEventListener('click', () => {
       list.scrollTo({ top: list.scrollHeight, behavior: 'smooth' });
-      markRead();
+      markRead(true);
     });
 
-    // messages: delegated actions (react / edit / delete / pills)
+    // message actions (delegated)
     list.addEventListener('click', (e) => {
       const pill = e.target.closest('.react-pill');
       if (pill) {
@@ -1070,20 +1107,50 @@
       if (delBtn) {
         const row = delBtn.closest('[data-id]');
         const id = Number(row.dataset.id);
-        openConfirm('Delete this message?', 'Delete', true, async () => {
-          try { await api('/api/messages/' + id, { method: 'DELETE' }); }
-          catch (err) { toast(err.message); }
-        });
+        const m = state.messages.find((x) => x.id === id);
+        if (m) {
+          openConfirm('Delete message?', 'This can\'t be undone.', 'Delete', true, async () => {
+            try { await api('/api/messages/' + id, { method: 'DELETE' }); }
+            catch (err) { toast(err.message); }
+          });
+        }
         return;
       }
       if (!e.target.closest('.emoji-pop')) closeEmojiPop();
     });
 
-    // window focus → clear unread
+    // double click a message to heart it
+    list.addEventListener('dblclick', (e) => {
+      if (e.target.closest('a')) return;
+      const row = e.target.closest('[data-id]');
+      if (!row) return;
+      const m = state.messages.find((x) => x.id === Number(row.dataset.id));
+      if (m && !m.system) { e.preventDefault(); toggleReact(m, '❤️'); }
+    });
+
+    // right click → context menu
+    list.addEventListener('contextmenu', (e) => {
+      const row = e.target.closest('.msg-row[data-id]');
+      if (!row) return;
+      const m = state.messages.find((x) => x.id === Number(row.dataset.id));
+      if (!m || m.system) return;
+      e.preventDefault();
+      closeEmojiPop();
+      openCtxMenu(e.clientX, e.clientY, m);
+    });
+
+    document.addEventListener('click', (e) => {
+      if (ctxMenu && !e.target.closest('.ctx-menu')) closeCtxMenu();
+      if (!e.target.closest('.emoji-pop') && !e.target.closest('.react-btn')) closeEmojiPop();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { closeModal(); closeCtxMenu(); }
+    });
+    window.addEventListener('scroll', closeCtxMenu, true);
+
     window.addEventListener('focus', () => { markRead(); });
     document.addEventListener('visibilitychange', () => { if (!document.hidden) markRead(); });
 
-    // routing (back/forward)
     window.addEventListener('popstate', routeFromPath);
   }
 
